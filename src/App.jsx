@@ -150,8 +150,8 @@ export default function App() {
           onAdd={(name, amount) => {
             dispatch(
               started
-                ? { type: 'addPlayer', position: sheet.position, name, amount }
-                : { type: 'seatPlayer', seat: sheet.seat, name, amount }
+                ? { type: 'addPlayer', position: sheet.position, name, amount, at: Date.now() }
+                : { type: 'seatPlayer', seat: sheet.seat, name, amount, at: Date.now() }
             );
             close();
             showToast(`${name} הצטרף/ה לשולחן 🎉`);
@@ -165,7 +165,7 @@ export default function App() {
           player={activePlayer}
           onClose={close}
           onBuyIn={(amount) => {
-            dispatch({ type: 'addBuyIn', id: activePlayer.id, amount });
+            dispatch({ type: 'addBuyIn', id: activePlayer.id, amount, at: Date.now() });
             close();
             showToast(`${activePlayer.name}: קנייה חוזרת ${formatShekel(amount)}`);
           }}

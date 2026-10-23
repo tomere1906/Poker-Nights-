@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { QUICK_AMOUNTS, totalIn } from '../lib/game.js';
-import { formatShekel } from '../lib/format.js';
+import { QUICK_AMOUNTS, timesOf, totalIn } from '../lib/game.js';
+import { formatShekel, formatTime } from '../lib/format.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
 import Avatar from './Avatar.jsx';
@@ -8,8 +8,10 @@ import Avatar from './Avatar.jsx';
 export default function PlayerSheet({ player, onBuyIn, onUndo, onRemove, onClose }) {
   const [custom, setCustom] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const count = player.buyIns.length;
   const lastBuyIn = player.buyIns[count - 1];
+  const times = timesOf(player);
 
   return (
     <BottomSheet
@@ -19,13 +21,35 @@ export default function PlayerSheet({ player, onBuyIn, onUndo, onRemove, onClose
           <Avatar player={player} size="h-14 w-14 text-xl" />
           <div className="min-w-0">
             <h2 className="truncate text-xl font-bold">{player.name}</h2>
-            <p className="text-sm text-slate-400">
-              {formatShekel(totalIn(player))} · {count === 1 ? 'קנייה אחת' : `${count} קניות`}
-            </p>
+            <button
+              type="button"
+              onClick={() => setShowHistory((v) => !v)}
+              aria-expanded={showHistory}
+              className="-mx-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-sm text-slate-400 active:bg-white/5"
+            >
+              {formatShekel(totalIn(player))} ·{' '}
+              <span className="font-bold text-slate-200 underline decoration-dotted underline-offset-4">
+                {count === 1 ? 'קנייה אחת' : `${count} קניות`}
+              </span>
+              <span className={`text-xs transition-transform ${showHistory ? 'rotate-180' : ''}`}>▾</span>
+            </button>
           </div>
         </div>
       }
     >
+      {showHistory && (
+        <ol className="animate-fade-in mb-5 divide-y divide-white/5 rounded-2xl bg-slate-800/70 px-4 text-sm">
+          {player.buyIns.map((amount, i) => (
+            <li key={i} className="flex items-center gap-3 py-2.5">
+              <span className="w-5 text-slate-500">{i + 1}</span>
+              <span className="flex-1 text-slate-300">{i === 0 ? 'כניסה' : 'קנייה חוזרת'}</span>
+              <span className="font-bold">{formatShekel(amount)}</span>
+              <span className="w-12 text-end tabular-nums text-slate-400">{formatTime(times[i])}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
       <p className="mb-2 text-sm text-slate-400">קנייה חוזרת</p>
       <div className="mb-2 grid grid-cols-3 gap-2">
         {QUICK_AMOUNTS.map((a) => (

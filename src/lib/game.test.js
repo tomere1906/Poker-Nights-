@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_PLAYERS, gameReducer, initialState, initials, netOf, normalizeState, potTotal, totalIn } from './game.js';
+import { MAX_PLAYERS, gameReducer, initialState, initials, netOf, normalizeState, potTotal, timesOf, totalIn } from './game.js';
 
 function add(state, name, position = state.players.length, amount = 100) {
   return gameReducer(state, { type: 'addPlayer', position, name, amount });
@@ -55,6 +55,21 @@ describe('gameReducer (game started)', () => {
     expect(s.players[0].buyIns).toHaveLength(2);
     s = gameReducer(s, { type: 'undoBuyIn', id });
     expect(totalIn(s.players[0])).toBe(100);
+  });
+
+  it('records when each buy-in happened, and undo drops its time too', () => {
+    let s = gameReducer(started, { type: 'addPlayer', position: 0, name: 'א', amount: 50, at: 1000 });
+    const id = s.players[0].id;
+    s = gameReducer(s, { type: 'addBuyIn', id, amount: 100, at: 2000 });
+    expect(timesOf(s.players[0])).toEqual([1000, 2000]);
+    s = gameReducer(s, { type: 'undoBuyIn', id });
+    expect(timesOf(s.players[0])).toEqual([1000]);
+  });
+
+  it('shows no time for buy-ins saved before times were tracked', () => {
+    let s = { ...started, players: [{ id: 'x', name: 'x', seat: 0, color: 0, buyIns: [50, 50] }] };
+    s = gameReducer(s, { type: 'addBuyIn', id: 'x', amount: 100, at: 3000 });
+    expect(timesOf(s.players[0])).toEqual([null, null, 3000]);
   });
 
   it('never undoes the initial buy-in', () => {
