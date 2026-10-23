@@ -15,6 +15,13 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - `npm run dev` – run locally
 - `npm test` – run the tests
 - `npm run build` – production build
+- `npx vite preview` – serve the build at `/Poker-Nights-/`, like GitHub Pages
+
+## Deployment
+- GitHub Pages via `.github/workflows/deploy.yml`: every push to `main` runs the tests, builds, and deploys.
+- The app lives at `/Poker-Nights-/` (Vite `base`). Keep manifest, icon and service-worker paths relative (or `%BASE_URL%` in `index.html`) so the PWA works under that path.
+- Bump `CACHE` in `public/sw.js` when its caching logic changes.
+- Commits use the GitHub noreply email, never the personal Gmail.
 
 ## Language & RTL (always)
 - All UI text is in Hebrew: buttons, titles, warnings, empty states, copied WhatsApp text.

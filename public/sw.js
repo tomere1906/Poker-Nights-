@@ -1,8 +1,9 @@
 // Minimal offline support: network-first for pages, cache-first for assets.
-const CACHE = 'poker-night-v1';
+// Paths are relative to this file, so it works under any base path (e.g. GitHub Pages).
+const CACHE = 'poker-nights-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/', '/manifest.webmanifest', '/icon.svg'])));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './icon-192.png'])));
   self.skipWaiting();
 });
 
@@ -21,10 +22,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          caches.open(CACHE).then((cache) => cache.put('/', res.clone()));
+          caches.open(CACHE).then((cache) => cache.put('./', res.clone()));
           return res;
         })
-        .catch(() => caches.match('/'))
+        .catch(() => caches.match('./'))
     );
     return;
   }
