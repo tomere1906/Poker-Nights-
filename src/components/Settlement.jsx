@@ -22,7 +22,7 @@ async function copyText(text) {
 }
 
 function buildText(transfers, nets, nameOf) {
-  const lines = ['🃏 Poker Night – מי מעביר למי', ''];
+  const lines = ['🃏 Poker Nights – מי מעביר למי', ''];
   if (transfers.length === 0) lines.push('כולם יצאו מאוזנים 🤝');
   for (const t of transfers) lines.push(`${nameOf(t.from)} ← ${nameOf(t.to)}: ${formatShekel(t.amount)}`);
   lines.push('', 'תוצאות:');

@@ -43,7 +43,7 @@ export default function App() {
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       <header className="mb-2 flex items-center gap-2">
         <CardsIcon className="h-9 w-9 drop-shadow" />
-        <h1 className="text-2xl font-extrabold tracking-tight">Poker Night</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Poker Nights</h1>
       </header>
 
       {view === 'table' && (
