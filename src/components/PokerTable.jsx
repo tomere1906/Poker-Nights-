@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { potTotal } from '../lib/game.js';
+import { MAX_PLAYERS, potTotal } from '../lib/game.js';
 import { formatShekel } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
 import Seat from './Seat.jsx';
@@ -19,11 +19,15 @@ function seatUnder(x, y) {
   return el ? Number(el.dataset.seat) : null;
 }
 
-export default function PokerTable({ players, placing, onPlace, onPlayerTap, onMove }) {
+export default function PokerTable({ players, started, placing, onPlace, onEmptySeat, onPlayerTap, onMove }) {
   const pointer = useRef(null);
   const [drag, setDrag] = useState(null); // { id, x, y, over }
 
   const count = players.length;
+  // Setup: fixed seats. Game on: players spread evenly.
+  const slots = started ? count : MAX_PLAYERS;
+  const taken = new Set(players.map((p) => p.seat));
+  const emptySeats = started ? [] : Array.from({ length: MAX_PLAYERS }, (_, i) => i).filter((i) => !taken.has(i));
   const dragged = drag && players.find((p) => p.id === drag.id);
 
   function dragHandlers(player) {
@@ -74,9 +78,9 @@ export default function PokerTable({ players, placing, onPlace, onPlayerTap, onM
             </p>
           ) : count === 0 ? (
             <p className="mt-3 px-6 text-center text-sm font-medium leading-snug text-white/80">
-              הקש על ״הוסף שחקן״
+              הקש על + ליד כיסא
               <br />
-              כדי להתחיל
+              כדי להושיב שחקן
             </p>
           ) : (
             <>
@@ -88,11 +92,29 @@ export default function PokerTable({ players, placing, onPlace, onPlayerTap, onM
         </div>
       </div>
 
+      {emptySeats.map((i) => (
+        <button
+          key={`empty-${i}`}
+          type="button"
+          data-seat={i}
+          onClick={() => onEmptySeat(i)}
+          aria-label={`כיסא פנוי ${i + 1}`}
+          style={position(i, slots)}
+          className={`absolute flex h-[76px] w-[72px] -translate-x-1/2 -translate-y-1/2 items-center justify-center transition-[scale,filter] ${
+            drag?.over === i ? 'scale-110 drop-shadow-[0_0_12px_rgba(252,211,77,0.9)]' : ''
+          }`}
+        >
+          <span className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-white/30 bg-slate-900/60 text-2xl font-light text-white/60 shadow-inner transition active:scale-90">
+            +
+          </span>
+        </button>
+      ))}
+
       {players.map((player) => (
         <Seat
           key={player.id}
           player={player}
-          style={position(player.seat, count)}
+          style={position(player.seat, slots)}
           dimmed={placing || drag?.id === player.id}
           highlighted={drag && drag.over === player.seat && drag.id !== player.id}
           dragHandlers={placing ? undefined : dragHandlers(player)}

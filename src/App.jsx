@@ -29,13 +29,14 @@ export default function App() {
 
   const setView = (view) => dispatch({ type: 'setView', view });
   const close = () => setSheet(null);
-  const { players, view } = state;
+  const { players, view, started } = state;
   const full = players.length >= MAX_PLAYERS;
   const activePlayer = sheet?.type === 'player' && players.find((p) => p.id === sheet.id);
 
   function startAdd() {
-    // With fewer than two players there's nowhere "between" to choose.
-    if (players.length < 2) setSheet({ type: 'add', position: players.length });
+    // Setup: next free seat. Game on with fewer than two players: nowhere "between" to choose.
+    if (!started) setSheet({ type: 'add', seat: null });
+    else if (players.length < 2) setSheet({ type: 'add', position: players.length });
     else setPlacing(true);
   }
 
@@ -51,11 +52,13 @@ export default function App() {
           <main className="flex flex-1 items-center">
             <PokerTable
               players={players}
+              started={started}
               placing={placing}
               onPlace={(position) => {
                 setPlacing(false);
                 setSheet({ type: 'add', position });
               }}
+              onEmptySeat={(seat) => setSheet({ type: 'add', seat })}
               onPlayerTap={(p) => setSheet({ type: 'player', id: p.id })}
               onMove={(id, seat) => dispatch({ type: 'moveSeat', id, seat })}
             />
@@ -72,27 +75,43 @@ export default function App() {
           ) : (
             <>
               {players.length > 0 && (
-                <p className="mb-2 text-center text-xs text-slate-500">הקש על שחקן לקנייה חוזרת · גרור כדי להחליף מקום</p>
+                <p className="mb-2 text-center text-xs text-slate-500">
+                  {started ? 'הקש על שחקן לקנייה חוזרת' : 'הקש על שחקן לעריכה'} · גרור כדי להחליף מקום
+                </p>
               )}
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={players.length < 2}
-                  onClick={() => setView('end')}
-                  className="flex-1 rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none"
-                >
-                  סיום משחק 🏁
-                </button>
+                {started ? (
+                  <button
+                    type="button"
+                    disabled={players.length < 2}
+                    onClick={() => setView('end')}
+                    className="flex-1 rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none"
+                  >
+                    סיום משחק 🏁
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={players.length < 2}
+                    onClick={() => {
+                      dispatch({ type: 'startGame' });
+                      showToast('המשחק התחיל – בהצלחה! 🍀');
+                    }}
+                    className="flex-1 rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none"
+                  >
+                    המשחק התחיל 🎲
+                  </button>
+                )}
                 {!full && (
                   <button
                     type="button"
                     onClick={startAdd}
                     className={`flex items-center gap-1 rounded-2xl bg-amber-300 font-extrabold text-slate-900 shadow-lg shadow-amber-300/20 transition active:scale-95 ${
-                      players.length === 0 ? 'flex-1 justify-center py-4 text-lg' : 'px-4'
+                      started ? 'px-4' : 'justify-center px-4 text-base'
                     }`}
                   >
                     <span className="text-2xl leading-none">+</span>
-                    {players.length === 0 ? 'הוסף שחקן' : 'שחקן'}
+                    {started ? 'שחקן' : 'הוסף שחקן'}
                   </button>
                 )}
               </div>
@@ -129,7 +148,11 @@ export default function App() {
         <AddPlayerSheet
           onClose={close}
           onAdd={(name, amount) => {
-            dispatch({ type: 'addPlayer', position: sheet.position, name, amount });
+            dispatch(
+              started
+                ? { type: 'addPlayer', position: sheet.position, name, amount }
+                : { type: 'seatPlayer', seat: sheet.seat, name, amount }
+            );
             close();
             showToast(`${name} הצטרף/ה לשולחן 🎉`);
           }}

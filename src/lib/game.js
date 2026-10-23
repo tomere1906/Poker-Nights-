@@ -1,14 +1,16 @@
 // Pure game-state logic. The UI dispatches actions; nothing here touches the DOM.
-// Seats are always contiguous (0..n-1) so the table never shows gaps.
+// Before the game starts the table has MAX_PLAYERS fixed seats (gaps allowed).
+// Once it starts, seats are compacted to 0..n-1 so the table never shows gaps.
 
 export const MAX_PLAYERS = 9;
 export const QUICK_AMOUNTS = [50, 100, 200];
 export const AVATAR_COLORS = 10;
 
 // view: 'table' | 'end' | 'settle'.
+// started: false during seating, true once the game is on.
 // endMode: 'net' -> finals hold each player's signed profit/loss;
 //          'chips' -> finals hold the chips each player left with.
-export const initialState = { players: [], view: 'table', finals: {}, endMode: 'net' };
+export const initialState = { players: [], view: 'table', started: false, finals: {}, endMode: 'net' };
 
 export function totalIn(player) {
   return player.buyIns.reduce((sum, a) => sum + a, 0);
@@ -34,13 +36,25 @@ export function netOf(state, player) {
   return state.endMode === 'chips' ? value - totalIn(player) : value;
 }
 
+function compactSeats(players) {
+  return [...players].sort((a, b) => a.seat - b.seat).map((p, i) => ({ ...p, seat: i }));
+}
+
+export function firstFreeSeat(players) {
+  const taken = new Set(players.map((p) => p.seat));
+  for (let i = 0; i < MAX_PLAYERS; i++) if (!taken.has(i)) return i;
+  return null;
+}
+
 // Repairs saved state from older versions (seat gaps, missing fields).
 export function normalizeState(state) {
-  const players = [...state.players].sort((a, b) => a.seat - b.seat).map((p, i) => ({ ...p, seat: i }));
+  // Saves from before `started` existed with players seated were mid-game.
+  const started = state.started ?? state.players.length > 0;
+  const players = started ? compactSeats(state.players) : state.players;
   const finals = state.finals ?? {};
   // Saves from before endMode existed always held chip counts.
   const endMode = state.endMode ?? (Object.keys(finals).length > 0 ? 'chips' : 'net');
-  return { ...initialState, ...state, players, finals, endMode };
+  return { ...initialState, ...state, players, started, finals, endMode };
 }
 
 function nextColor(players) {
@@ -55,8 +69,16 @@ function newId() {
 
 export function gameReducer(state, action) {
   switch (action.type) {
+    case 'seatPlayer': {
+      // Setup mode: take exactly `seat`, or the first free seat when it's null.
+      const { name, amount } = action;
+      const seat = action.seat ?? firstFreeSeat(state.players);
+      if (seat === null || state.players.some((p) => p.seat === seat)) return state;
+      const player = { id: newId(), name, seat, color: nextColor(state.players), buyIns: [amount] };
+      return { ...state, players: [...state.players, player] };
+    }
     case 'addPlayer': {
-      // position: the seat the new player takes; players from there on shift by one.
+      // Game on: position is the seat the new player takes; players from there on shift by one.
       const { name, amount } = action;
       if (state.players.length >= MAX_PLAYERS) return state;
       const position = Math.min(Math.max(action.position, 0), state.players.length);
@@ -80,16 +102,18 @@ export function gameReducer(state, action) {
       const gone = state.players.find((p) => p.id === action.id);
       if (!gone) return state;
       const { [action.id]: _, ...finals } = state.finals;
+      const rest = state.players.filter((p) => p.id !== action.id);
       return {
         ...state,
         finals,
-        players: state.players
-          .filter((p) => p.id !== action.id)
-          .map((p) => (p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)),
+        // During setup the seat just becomes free; once started, close the gap.
+        players: state.started ? rest.map((p) => (p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)) : rest,
       };
     }
+    case 'startGame':
+      return { ...state, started: true, players: compactSeats(state.players) };
     case 'moveSeat': {
-      // Dropping onto another player swaps the two.
+      // Dropping onto another player swaps the two; onto an empty seat just moves.
       const mover = state.players.find((p) => p.id === action.id);
       if (!mover || mover.seat === action.seat) return state;
       return {
