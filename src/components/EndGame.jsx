@@ -10,6 +10,21 @@ function NetBadge({ net }) {
   );
 }
 
+function QuickPill({ active, tone, onClick, children }) {
+  const on = tone === 'lost' ? 'bg-rose-400 text-slate-900' : 'bg-slate-200 text-slate-900';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-9 rounded-full px-3.5 text-sm font-bold transition active:scale-95 ${
+        active ? on : 'bg-slate-950/50 text-slate-300 ring-1 ring-white/10'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 const MODES = [
   { id: 'net', label: 'רווח / הפסד' },
   { id: 'chips', label: 'צ׳יפים בסוף' },
@@ -71,6 +86,13 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle }) {
     inputs.current[id]?.focus();
   }
 
+  // One-tap result: net is the player's profit/loss, stored in the current mode's terms.
+  function quick(player, net) {
+    onFinal(player.id, endMode === 'chips' ? net + totalIn(player) : net);
+    setDrafts((d) => ({ ...d, [player.id]: undefined }));
+    if (net < 0) setSigns((s) => ({ ...s, [player.id]: -1 }));
+  }
+
   const parse = (text) => (text.trim() === '' ? null : parseAmount(text));
 
   return (
@@ -112,57 +134,69 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle }) {
           const needsSign = endMode === 'net' && drafts[p.id] > 0;
           const enterKeyHint = i < ordered.length - 1 ? 'next' : 'done';
           return (
-            <li key={p.id} className="flex items-center gap-2 rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5">
-              <Avatar player={p} size="h-11 w-11 text-base" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-bold">{p.name}</p>
-                <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-slate-400">
-                  {endMode === 'chips' ? `נכנס ${formatShekel(totalIn(p))}` : null}
-                  {net !== null && <NetBadge net={net} />}
-                  {needsSign && <span className="font-bold text-amber-300">+ או −?</span>}
-                </p>
+            <li key={p.id} className="rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5">
+              <div className="flex items-center gap-2">
+                <Avatar player={p} size="h-11 w-11 text-base" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold">{p.name}</p>
+                  <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-400">
+                    <span>בפנים {formatShekel(totalIn(p))}</span>
+                    {net !== null && <NetBadge net={net} />}
+                    {needsSign && <span className="font-bold text-amber-300">+ או −?</span>}
+                  </p>
+                </div>
+  
+                {endMode === 'net' ? (
+                  <>
+                    <div className={`flex overflow-hidden rounded-2xl ${needsSign ? 'ring-2 ring-amber-300' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={() => chooseSign(p.id, 1)}
+                        aria-label="רווח"
+                        className={`h-12 w-11 text-2xl font-extrabold transition ${
+                          sign === 1 ? 'bg-emerald-400 text-slate-900' : 'bg-slate-950/60 text-emerald-300'
+                        }`}
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => chooseSign(p.id, -1)}
+                        aria-label="הפסד"
+                        className={`h-12 w-11 text-2xl font-extrabold transition ${
+                          sign === -1 ? 'bg-rose-400 text-slate-900' : 'bg-slate-950/60 text-rose-300'
+                        }`}
+                      >
+                        −
+                      </button>
+                    </div>
+                    <AmountField
+                      inputRef={(el) => (inputs.current[p.id] = el)}
+                      enterKeyHint={enterKeyHint}
+                      value={p.id in finals ? String(Math.abs(finals[p.id])) : drafts[p.id] ?? ''}
+                      onChange={(text) => setNet(p.id, parse(text), sign)}
+                      placeholder="סכום"
+                    />
+                  </>
+                ) : (
+                  <AmountField
+                    enterKeyHint={enterKeyHint}
+                    value={p.id in finals ? String(finals[p.id]) : ''}
+                    onChange={(text) => onFinal(p.id, parse(text))}
+                    placeholder="יוצא עם"
+                  />
+                )}
               </div>
 
-              {endMode === 'net' ? (
-                <>
-                  <div className={`flex overflow-hidden rounded-2xl ${needsSign ? 'ring-2 ring-amber-300' : ''}`}>
-                    <button
-                      type="button"
-                      onClick={() => chooseSign(p.id, 1)}
-                      aria-label="רווח"
-                      className={`h-12 w-11 text-2xl font-extrabold transition ${
-                        sign === 1 ? 'bg-emerald-400 text-slate-900' : 'bg-slate-950/60 text-emerald-300'
-                      }`}
-                    >
-                      +
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => chooseSign(p.id, -1)}
-                      aria-label="הפסד"
-                      className={`h-12 w-11 text-2xl font-extrabold transition ${
-                        sign === -1 ? 'bg-rose-400 text-slate-900' : 'bg-slate-950/60 text-rose-300'
-                      }`}
-                    >
-                      −
-                    </button>
-                  </div>
-                  <AmountField
-                    inputRef={(el) => (inputs.current[p.id] = el)}
-                    enterKeyHint={enterKeyHint}
-                    value={p.id in finals ? String(Math.abs(finals[p.id])) : drafts[p.id] ?? ''}
-                    onChange={(text) => setNet(p.id, parse(text), sign)}
-                    placeholder="סכום"
-                  />
-                </>
-              ) : (
-                <AmountField
-                  enterKeyHint={enterKeyHint}
-                  value={p.id in finals ? String(finals[p.id]) : ''}
-                  onChange={(text) => onFinal(p.id, parse(text))}
-                  placeholder="יוצא עם"
-                />
-              )}
+              {/* Quick results, aligned under the name (avatar 2.75rem + gap 0.5rem). */}
+              <div className="mt-2 flex gap-2 ps-[3.25rem]">
+                <QuickPill active={net === 0} tone="even" onClick={() => quick(p, 0)}>
+                  🤝 מאוזן
+                </QuickPill>
+                <QuickPill active={net === -totalIn(p)} tone="lost" onClick={() => quick(p, -totalIn(p))}>
+                  💀 הפסיד הכל
+                </QuickPill>
+              </div>
             </li>
           );
         })}
