@@ -91,6 +91,24 @@ Build in steps and stop for the user's confirmation after each step.
 - Migrations live in `supabase/migrations/`. The user applies each file by pasting it into the dashboard SQL Editor and sends back the output; hand over one file at a time with clear instructions.
 - The project has "automatically expose new tables" **off** and automatic RLS **on**: every table needs explicit `grant`s to the Data API roles **and** RLS policies.
 
+## Database (supabase/migrations)
+| Table | Holds | Read | Write |
+|---|---|---|---|
+| `profiles` | display name + avatar from Google (email stays only in `auth.users`) | self + people who share a table | trigger only (`private.sync_profile` on `auth.users`) |
+| `poker_tables` | manager, invite code, status (seating/playing/ended), settings, end mode | manager + members | insert: any signed-in user as manager; update/delete: manager |
+| `table_members` | users who joined via invite (read-only viewers) | people in the table | insert: yourself, with a valid invite code of a not-ended table; delete: manager |
+| `table_players` | seats: `user_id` (account) or null (guest by name, linkable later), results | people in the table | manager only; may seat only guests or members |
+| `buy_ins` | amount + time; FK `(player_id, table_id)` keeps it on the same table | people in the table | manager only |
+
+## Roles & security rules (never weaken)
+- **Manager** (`poker_tables.manager_id`): the only writer of game data (players, buy-ins, results, settings, ending). Also plays.
+- **Member/player**: fully passive. Reads the live table (seats, buy-ins, pot) and their own stats. No requests, no writes.
+- **Stranger**: sees nothing. **anon**: has no grants at all.
+- **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges.
+- Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
+- Every new table: enable RLS, add policies, add explicit grants (never to `anon` unless truly public), index foreign keys, and extend `supabase/tests/rls_test.sql`.
+- `supabase/tests/rls_test.sql` must pass (55+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
+
 Design rules so phase 1 code carries over:
 - The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.
 - Keep all game rules in pure functions in `src/lib/` (reducer, settlement). The UI dispatches actions; a backend will later persist the same actions, not replace the logic.
