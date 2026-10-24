@@ -1,6 +1,7 @@
 // Minimal offline support: network-first for pages, cache-first for assets.
 // Paths are relative to this file, so it works under any base path (e.g. GitHub Pages).
-const CACHE = 'poker-nights-v2';
+const CACHE = 'poker-nights-v3';
+const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './icon-192.png'])));
@@ -17,6 +18,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
+
+  // Only the app's own files and its fonts are cached. Everything else
+  // (Supabase API and auth, Google sign-in, profile pictures) always goes to
+  // the network: it's personal, live data and must never be served stale.
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin && !FONT_HOSTS.includes(url.hostname)) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(

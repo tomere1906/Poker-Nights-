@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { DEFAULT_SETTINGS, MAX_PLAYERS, cleanSettings, gameReducer, initialState, normalizeState } from './lib/game.js';
 import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.js';
+import { useAuth } from './lib/auth.js';
 import { formatShekel } from './lib/format.js';
 import PokerTable from './components/PokerTable.jsx';
 import AddPlayerSheet from './components/AddPlayerSheet.jsx';
@@ -17,6 +18,7 @@ export default function App() {
   const [state, dispatch] = useReducer(gameReducer, initialState, (s) => normalizeState(loadState(s)));
   // The app always opens on the start screen; the game itself is in `state`.
   const [screen, setScreen] = useState('home'); // 'home' | 'setup' | 'game'
+  const auth = useAuth();
   const [sheet, setSheet] = useState(null); // { type: 'add', position } | { type: 'player', id }
   const [placing, setPlacing] = useState(false);
   const [confetti, setConfetti] = useState(0);
@@ -47,7 +49,7 @@ export default function App() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       {screen === 'home' && (
-        <HomeScreen state={state} onContinue={() => setScreen('game')} onNewTable={() => setScreen('setup')} />
+        <HomeScreen state={state} auth={auth} onContinue={() => setScreen('game')} onNewTable={() => setScreen('setup')} />
       )}
 
       {screen === 'setup' && (
