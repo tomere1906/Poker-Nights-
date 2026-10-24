@@ -1,12 +1,16 @@
 import { useState } from 'react';
-import { QUICK_AMOUNTS } from '../lib/game.js';
+import { MAX_REBUY_BUTTONS } from '../lib/game.js';
 import { formatShekel } from '../lib/format.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
 
-export default function AddPlayerSheet({ onAdd, onClose }) {
+export default function AddPlayerSheet({ settings, onAdd, onClose }) {
+  // The table's initial buy-in comes first (and is preselected); latecomers
+  // who enter with more can pick a re-buy amount or type their own.
+  const others = settings.rebuyAmounts.filter((a) => a !== settings.initialBuyIn);
+  const choices = [settings.initialBuyIn, ...others].slice(0, MAX_REBUY_BUTTONS);
   const [name, setName] = useState('');
-  const [amount, setAmount] = useState(QUICK_AMOUNTS[0]);
+  const [amount, setAmount] = useState(settings.initialBuyIn);
   const valid = name.trim() !== '' && amount > 0;
 
   function submit(e) {
@@ -30,8 +34,8 @@ export default function AddPlayerSheet({ onAdd, onClose }) {
         />
         <div>
           <p className="mb-2 text-sm text-slate-400">קנייה ראשונה</p>
-          <div className="mb-2 grid grid-cols-3 gap-2">
-            {QUICK_AMOUNTS.map((a) => (
+          <div className="mb-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${choices.length}, 1fr)` }}>
+            {choices.map((a) => (
               <button
                 key={a}
                 type="button"
@@ -44,7 +48,7 @@ export default function AddPlayerSheet({ onAdd, onClose }) {
               </button>
             ))}
           </div>
-          <AmountInput value={QUICK_AMOUNTS.includes(amount) ? 0 : amount} onChange={setAmount} />
+          <AmountInput value={choices.includes(amount) ? 0 : amount} onChange={setAmount} />
         </div>
         <button
           type="submit"

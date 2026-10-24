@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { MAX_PLAYERS, gameReducer, initialState, normalizeState } from './lib/game.js';
-import { loadState, saveState } from './lib/storage.js';
+import { DEFAULT_SETTINGS, MAX_PLAYERS, cleanSettings, gameReducer, initialState, normalizeState } from './lib/game.js';
+import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.js';
 import { formatShekel } from './lib/format.js';
 import PokerTable from './components/PokerTable.jsx';
 import AddPlayerSheet from './components/AddPlayerSheet.jsx';
@@ -9,10 +9,14 @@ import EndGame from './components/EndGame.jsx';
 import Settlement from './components/Settlement.jsx';
 import Confetti from './components/Confetti.jsx';
 import Toast from './components/Toast.jsx';
+import HomeScreen from './components/HomeScreen.jsx';
+import TableSetup from './components/TableSetup.jsx';
 import { CardsIcon } from './components/Icons.jsx';
 
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, initialState, (s) => normalizeState(loadState(s)));
+  // The app always opens on the start screen; the game itself is in `state`.
+  const [screen, setScreen] = useState('home'); // 'home' | 'setup' | 'game'
   const [sheet, setSheet] = useState(null); // { type: 'add', position } | { type: 'player', id }
   const [placing, setPlacing] = useState(false);
   const [confetti, setConfetti] = useState(0);
@@ -29,7 +33,7 @@ export default function App() {
 
   const setView = (view) => dispatch({ type: 'setView', view });
   const close = () => setSheet(null);
-  const { players, view, started } = state;
+  const { players, view, started, settings } = state;
   const full = players.length >= MAX_PLAYERS;
   const activePlayer = sheet?.type === 'player' && players.find((p) => p.id === sheet.id);
 
@@ -42,12 +46,38 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
-      <header className="mb-2 flex items-center gap-2">
-        <CardsIcon className="h-9 w-9 drop-shadow" />
-        <h1 className="text-2xl font-extrabold tracking-tight">Poker Nights</h1>
-      </header>
+      {screen === 'home' && (
+        <HomeScreen state={state} onContinue={() => setScreen('game')} onNewTable={() => setScreen('setup')} />
+      )}
 
-      {view === 'table' && (
+      {screen === 'setup' && (
+        <TableSetup
+          defaults={cleanSettings(loadSettings(DEFAULT_SETTINGS))}
+          onBack={() => setScreen('home')}
+          onOpen={(newSettings) => {
+            saveSettings(newSettings);
+            dispatch({ type: 'openTable', settings: newSettings });
+            setScreen('game');
+            showToast('השולחן נפתח – הושיבו שחקנים 🎉');
+          }}
+        />
+      )}
+
+      {screen === 'game' && (
+        <header className="mb-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setScreen('home')}
+            aria-label="מסך הבית"
+            className="flex items-center gap-2 rounded-2xl active:scale-95"
+          >
+            <CardsIcon className="h-9 w-9 drop-shadow" />
+            <h1 className="text-2xl font-extrabold tracking-tight">Poker Nights</h1>
+          </button>
+        </header>
+      )}
+
+      {screen === 'game' && view === 'table' && (
         <>
           <main className="flex flex-1 items-center">
             <PokerTable
@@ -120,7 +150,7 @@ export default function App() {
         </>
       )}
 
-      {view === 'end' && (
+      {screen === 'game' && view === 'end' && (
         <EndGame
           state={state}
           onMode={(mode) => dispatch({ type: 'setEndMode', mode })}
@@ -133,19 +163,20 @@ export default function App() {
         />
       )}
 
-      {view === 'settle' && (
+      {screen === 'game' && view === 'settle' && (
         <Settlement
           state={state}
           onBack={() => setView('end')}
           onNewGame={() => {
             dispatch({ type: 'newGame' });
-            showToast('משחק חדש – בהצלחה! 🍀');
+            setScreen('home');
           }}
         />
       )}
 
       {sheet?.type === 'add' && (
         <AddPlayerSheet
+          settings={settings}
           onClose={close}
           onAdd={(name, amount) => {
             dispatch(
@@ -163,6 +194,7 @@ export default function App() {
         <PlayerSheet
           key={activePlayer.id}
           player={activePlayer}
+          rebuyAmounts={settings.rebuyAmounts}
           onClose={close}
           onBuyIn={(amount) => {
             dispatch({ type: 'addBuyIn', id: activePlayer.id, amount, at: Date.now() });

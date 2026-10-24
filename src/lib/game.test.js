@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_PLAYERS, gameReducer, initialState, initials, netOf, normalizeState, potTotal, timesOf, totalIn } from './game.js';
+import { DEFAULT_SETTINGS, MAX_PLAYERS, cleanSettings, gameReducer, initialState, initials, netOf, normalizeState, potTotal, timesOf, totalIn } from './game.js';
 
 function add(state, name, position = state.players.length, amount = 100) {
   return gameReducer(state, { type: 'addPlayer', position, name, amount });
@@ -9,6 +9,41 @@ const order = (state) => [...state.players].sort((a, b) => a.seat - b.seat).map(
 const started = { ...initialState, started: true };
 const seat = (state, name, seatNo = null) => gameReducer(state, { type: 'seatPlayer', seat: seatNo, name, amount: 50 });
 const seats = (state) => Object.fromEntries(state.players.map((p) => [p.name, p.seat]));
+
+describe('table settings', () => {
+  it('opens a fresh table with the chosen settings', () => {
+    let s = seat({ ...initialState, tableOpen: true }, 'old');
+    s = gameReducer(s, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [60, 30, 100] } });
+    expect(s.tableOpen).toBe(true);
+    expect(s.players).toEqual([]);
+    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100] });
+  });
+
+  it('cleans settings: 2-4 distinct positive buttons, else defaults', () => {
+    expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [100, 0, 100, 50] })).toEqual({
+      initialBuyIn: 40,
+      rebuyAmounts: [50, 100],
+    });
+    expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [10, 20, 30, 40, 50] }).rebuyAmounts).toEqual([10, 20, 30, 40]);
+    expect(cleanSettings({ initialBuyIn: 0, rebuyAmounts: [70] })).toEqual(DEFAULT_SETTINGS);
+    expect(cleanSettings(undefined)).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('a new game closes the table but remembers the settings', () => {
+    let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [30, 60] } });
+    s = gameReducer(seat(s, 'א'), { type: 'newGame' });
+    expect(s.tableOpen).toBe(false);
+    expect(s.players).toEqual([]);
+    expect(s.settings.rebuyAmounts).toEqual([30, 60]);
+  });
+
+  it('treats an old save with players as an open table with default settings', () => {
+    const s = normalizeState({ players: [{ id: 'x', name: 'x', seat: 0, color: 0, buyIns: [50] }] });
+    expect(s.tableOpen).toBe(true);
+    expect(s.settings).toEqual(DEFAULT_SETTINGS);
+    expect(normalizeState({ players: [] }).tableOpen).toBe(false);
+  });
+});
 
 describe('setup (before the game starts)', () => {
   it('seats players in the exact seat tapped, or the first free one', () => {

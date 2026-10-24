@@ -3,14 +3,41 @@
 // Once it starts, seats are compacted to 0..n-1 so the table never shows gaps.
 
 export const MAX_PLAYERS = 9;
-export const QUICK_AMOUNTS = [50, 100, 200];
 export const AVATAR_COLORS = 10;
+export const MIN_REBUY_BUTTONS = 2;
+export const MAX_REBUY_BUTTONS = 4;
 
+// Table settings chosen by the table manager when opening a table.
+export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200] };
+
+// The whole state is one table. With a backend later this maps onto a
+// `tables` row (settings, status) plus `players` and `buy_ins` rows.
+// tableOpen: a table exists (opened from the start screen) and hasn't been cleared.
 // view: 'table' | 'end' | 'settle'.
 // started: false during seating, true once the game is on.
 // endMode: 'net' -> finals hold each player's signed profit/loss;
 //          'chips' -> finals hold the chips each player left with.
-export const initialState = { players: [], view: 'table', started: false, finals: {}, endMode: 'net' };
+export const initialState = {
+  tableOpen: false,
+  settings: DEFAULT_SETTINGS,
+  players: [],
+  view: 'table',
+  started: false,
+  finals: {},
+  endMode: 'net',
+};
+
+const positiveInt = (n) => Number.isInteger(n) && n > 0;
+
+// Valid settings: a positive initial buy-in and 2-4 distinct positive
+// re-buy amounts, ascending. Anything invalid falls back to the defaults.
+export function cleanSettings(settings) {
+  const initialBuyIn = positiveInt(settings?.initialBuyIn) ? settings.initialBuyIn : DEFAULT_SETTINGS.initialBuyIn;
+  const amounts = [...new Set((settings?.rebuyAmounts ?? []).filter(positiveInt))].sort((a, b) => a - b);
+  const rebuyAmounts =
+    amounts.length >= MIN_REBUY_BUTTONS ? amounts.slice(0, MAX_REBUY_BUTTONS) : DEFAULT_SETTINGS.rebuyAmounts;
+  return { initialBuyIn, rebuyAmounts };
+}
 
 export function totalIn(player) {
   return player.buyIns.reduce((sum, a) => sum + a, 0);
@@ -60,7 +87,10 @@ export function normalizeState(state) {
   const finals = state.finals ?? {};
   // Saves from before endMode existed always held chip counts.
   const endMode = state.endMode ?? (Object.keys(finals).length > 0 ? 'chips' : 'net');
-  return { ...initialState, ...state, players, started, finals, endMode };
+  // Saves from before the start screen: a table with players is still open.
+  const tableOpen = state.tableOpen ?? players.length > 0;
+  const settings = cleanSettings(state.settings ?? DEFAULT_SETTINGS);
+  return { ...initialState, ...state, players, started, finals, endMode, tableOpen, settings };
 }
 
 function nextColor(players) {
@@ -158,8 +188,11 @@ export function gameReducer(state, action) {
     }
     case 'setView':
       return { ...state, view: action.view };
+    case 'openTable':
+      return { ...initialState, tableOpen: true, settings: cleanSettings(action.settings) };
     case 'newGame':
-      return initialState;
+      // Back to the start screen; keep the settings for the next table.
+      return { ...initialState, settings: state.settings };
     default:
       return state;
   }

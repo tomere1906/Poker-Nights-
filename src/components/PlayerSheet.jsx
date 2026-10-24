@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { QUICK_AMOUNTS, timesOf, totalIn } from '../lib/game.js';
+import { timesOf, totalIn } from '../lib/game.js';
 import { formatShekel, formatTime } from '../lib/format.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
 import Avatar from './Avatar.jsx';
 
-export default function PlayerSheet({ player, onBuyIn, onUndo, onRemove, onClose }) {
+export default function PlayerSheet({ player, rebuyAmounts, onBuyIn, onUndo, onRemove, onClose }) {
   const [custom, setCustom] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -51,8 +51,8 @@ export default function PlayerSheet({ player, onBuyIn, onUndo, onRemove, onClose
       )}
 
       <p className="mb-2 text-sm text-slate-400">קנייה חוזרת</p>
-      <div className="mb-2 grid grid-cols-3 gap-2">
-        {QUICK_AMOUNTS.map((a) => (
+      <div className="mb-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${rebuyAmounts.length}, 1fr)` }}>
+        {rebuyAmounts.map((a) => (
           <button
             key={a}
             type="button"

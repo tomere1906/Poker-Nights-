@@ -39,10 +39,12 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - Code, comments, file names and commit messages stay in English.
 
 ## Features
-1. **Table view (main screen)**: oval green felt table with a wood rim, up to 9 players. No empty seats: players are always spread evenly so the table looks full. A side "+" button adds a player: tap it, then tap one of the "+" slots between two players to choose where they sit, then enter name + initial buy-in. Drag a player onto another to swap seats. Each seat shows avatar with initials, name and total buy-in. Tap a player to add a re-buy (+50, +100, +200, custom) or remove them.
-2. **List view**: toggle from the table view. Shows each player's name, number of buy-ins, and total amount in, with the total pot at the bottom.
-3. **End game**: enter how much each player leaves with (final chips). The app computes net = final − total buy-in. The user never calculates anything. If the sum of finals ≠ total buy-ins, show the difference as a warning and allow continuing.
-4. **Settlement**: list of `X → Y: amount ₪`, a "copy to WhatsApp" button, and a "new game" button.
+1. **Start screen**: the app always opens here. "פתח שולחן" when no table is open; "חזרה לשולחן" (with player count and pot) plus "פתח שולחן חדש" (tap twice, discards the current table) when one is. Tapping the logo in the game returns here.
+2. **Table settings**: the table manager sets the initial buy-in and 2–4 quick re-buy amounts ("סכום אחר" is always available too). Stored per table in the game state and as the defaults for the next table (`poker-nights-settings` in localStorage). Adding a player preselects the initial buy-in; re-buy buttons use the chosen amounts.
+3. **Table view**: oval green felt table with a wood rim, up to 9 players. Before "המשחק התחיל": 9 fixed seats, each empty one with a "+" that seats a player there; "הוסף שחקן" fills the next free seat. After it starts: empty seats disappear, players spread evenly; latecomers are placed via "+" slots between players. Drag a player onto another seat to move/swap. Tap a player for re-buys, undo, remove, and the buy-in history (amount + time of each buy-in).
+4. **List view** (not built yet): toggle from the table view. Each player's name, number of buy-ins and total in, with the pot at the bottom.
+5. **End game**: enter each player's result as profit/loss (+/−, default) or final chips. One-tap "מאוזן" and "הפסיד הכל". Each card shows how much the player put in. If the totals don't balance, warn and allow continuing.
+6. **Settlement**: list of `X → Y: amount ₪`, "copy to WhatsApp", and "new game" (back to the start screen).
 
 ## Settlement algorithm rules (do not break these)
 - All amounts are whole shekels. Never show 2.5 or any fraction.
@@ -69,7 +71,20 @@ Tests should assert these properties (integers, all transfers ≥ 20 ₪, each p
 ## Design
 Cute and playful: soft shadows, rounded corners, chip and card icons, confetti on "End game". Dark mode by default. Large tap targets for phone use.
 
+## Roadmap (multiplayer branch)
+Build one phase at a time, and only when the user asks for it.
+1. **Table settings, no backend** (done): start screen, table setup, settings used throughout the game.
+2. **Accounts with Supabase**: sign-in, a user profile (display name). Players can still be added as guests without an account.
+3. **Shared tables**: the manager creates a table and invites players with a link/code. Everyone sees the same table live. Players *request* buy-ins from their phone; the manager approves or rejects them. Only the manager edits settings, seats and final results.
+4. **Personal statistics**: per-user history across tables: games played, total profit/loss, biggest win, buy-ins per night.
+
+Design rules so phase 1 code carries over:
+- The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.
+- Keep all game rules in pure functions in `src/lib/` (reducer, settlement). The UI dispatches actions; a backend will later persist the same actions, not replace the logic.
+- Buy-ins are already stored with their time; add a status (approved/pending) when shared tables arrive.
+- Until phase 2 is requested: no backend, no accounts, no new libraries.
+
 ## How to work on this project
 - Build in small steps and show each one working before moving on: table view and players → list view → end game and settlement.
-- Prefer simple solutions. Don't add a backend, accounts, or extra libraries unless asked.
+- Prefer simple solutions. Don't add a backend, accounts, or extra libraries unless asked (see Roadmap).
 - Keep components small and in `src/components/`.
