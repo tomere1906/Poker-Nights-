@@ -17,6 +17,13 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - `npm run build` – production build
 - `npx vite preview` – serve the build at `/Poker-Nights-/`, like GitHub Pages
 
+## Branches (protect the live site)
+- `main` is the live site: every push to it deploys to GitHub Pages. It must stay untouched.
+- **Never push to `main` or merge into `main` unless the user explicitly says so in that moment.** No exceptions for "small" fixes.
+- All new work happens on the `multiplayer` branch. Before committing, check `git branch --show-current`.
+- The user tests changes locally with `npm run dev`; there is no preview deploy of the branch.
+- Tag `v1` marks the live version from before multiplayer work (a safe point to return to).
+
 ## Deployment
 - GitHub Pages via `.github/workflows/deploy.yml`: every push to `main` runs the tests, builds, and deploys.
 - The app lives at `/Poker-Nights-/` (Vite `base`). Keep manifest, icon and service-worker paths relative (or `%BASE_URL%` in `index.html`) so the PWA works under that path.
