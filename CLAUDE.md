@@ -72,11 +72,24 @@ Tests should assert these properties (integers, all transfers ≥ 20 ₪, each p
 Cute and playful: soft shadows, rounded corners, chip and card icons, confetti on "End game". Dark mode by default. Large tap targets for phone use.
 
 ## Roadmap (multiplayer branch)
-Build one phase at a time, and only when the user asks for it.
+Build in steps and stop for the user's confirmation after each step.
 1. **Table settings, no backend** (done): start screen, table setup, settings used throughout the game.
-2. **Accounts with Supabase**: sign-in, a user profile (display name). Players can still be added as guests without an account.
-3. **Shared tables**: the manager creates a table and invites players with a link/code. Everyone sees the same table live. Players *request* buy-ins from their phone; the manager approves or rejects them. Only the manager edits settings, seats and final results.
-4. **Personal statistics**: per-user history across tables: games played, total profit/loss, biggest win, buy-ins per night.
+2. **Supabase + Google login + shared tables + stats** (in progress), in steps:
+   1. Connect: client in `src/lib/supabase.js`, env vars (done).
+   2. Schema, grants, RLS as migrations + SQL tests that try to break the rules.
+   3. Google sign-in (also from the iPhone home-screen app).
+   4. Shared live tables: manager-only writes, guests by name, Realtime for players.
+   5. Invites: "הזמן חברים" (Web Share, wa.me fallback, QR), auto-join after sign-in.
+   6. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
+   7. Security Advisor check, docs.
+3. **Share as image** (after the Supabase work): replace "העתק לוואטסאפ" with "שתף כתמונה": render the settlement card to PNG and open the share sheet (iPhone).
+
+## Supabase setup
+- Project ref `emkzkgpqaupqudzgewxa` (Frankfurt). App URL `https://emkzkgpqaupqudzgewxa.supabase.co`.
+- Only the public **publishable** key is used (`VITE_SUPABASE_PUBLISHABLE_KEY`). **Never** use or ask for the service_role/secret key or the DB password.
+- Local dev: `.env.local` (git-ignored; see `.env.example`). CI: GitHub Actions variables `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, passed to `npm run build` in `deploy.yml`. Never hard-code them.
+- Migrations live in `supabase/migrations/`. The user applies each file by pasting it into the dashboard SQL Editor and sends back the output; hand over one file at a time with clear instructions.
+- The project has "automatically expose new tables" **off** and automatic RLS **on**: every table needs explicit `grant`s to the Data API roles **and** RLS policies.
 
 Design rules so phase 1 code carries over:
 - The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.

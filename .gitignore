@@ -1,2 +1,5 @@
 node_modules
 dist
+# Local env (Supabase URL/key for dev). Never commit.
+.env.local
+.env.*.local
