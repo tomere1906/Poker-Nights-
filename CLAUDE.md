@@ -76,13 +76,22 @@ Build in steps and stop for the user's confirmation after each step.
 1. **Table settings, no backend** (done): start screen, table setup, settings used throughout the game.
 2. **Supabase + Google login + shared tables + stats** (in progress), in steps:
    1. Connect: client in `src/lib/supabase.js`, env vars (done).
-   2. Schema, grants, RLS as migrations + SQL tests that try to break the rules.
-   3. Google sign-in (also from the iPhone home-screen app).
-   4. Shared live tables: manager-only writes, guests by name, Realtime for players.
-   5. Invites: "הזמן חברים" (Web Share, wa.me fallback, QR), auto-join after sign-in.
-   6. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
-   7. Security Advisor check, docs.
+   2. Schema, grants, RLS as migrations + SQL tests that try to break the rules (done, 55 tests, Advisor clean).
+   3. Google sign-in (done on desktop; iPhone home-screen app test still open).
+   4. **Display names**: pick a name on first login (prefilled with the Google first name), profile screen to change it, per-table nickname set by the manager. Migration + RLS + tests.
+   5. Create a table online + manager controls: settings, seating flow, buy-ins/undo, all in Supabase.
+   6. Invites: "הזמן חברים" (Web Share, wa.me fallback, QR), opening the link → sign-in → auto-join; manager seats joined members or guests.
+   7. Live table for players: Realtime, read-only.
+   8. End game online: results entry (+/−, מאוזן, הפסיד הכל), whole-shekel settlement, close the table, store `final_net`.
+   9. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
+   10. Final security pass: Advisor, all SQL tests, docs; merging to `main` only when the user says so.
 3. **Share as image** (after the Supabase work): replace "העתק לוואטסאפ" with "שתף כתמונה": render the settlement card to PNG and open the share sheet (iPhone).
+
+## Names (rules)
+- `profiles.display_name` is the name everyone sees: tables, "החבר'ה שלי", stats. **Never show an email address to other users**; emails live only in `auth.users`.
+- A user may change only their own `display_name` (column-level grant + RLS). Google data sets it only on first sign-in; later sign-ins update the avatar only, never a chosen name.
+- Per-table name: `table_players.nickname`, written only by that table's manager. Shown name = nickname, else the profile's display name. Guests: nickname is their name.
+- Everything links by `user_id` (never by name), so renames never break history or stats. "החבר'ה שלי" groups by `user_id` and shows the profile name.
 
 ## Supabase setup
 - Project ref `emkzkgpqaupqudzgewxa` (Frankfurt). App URL `https://emkzkgpqaupqudzgewxa.supabase.co`.
