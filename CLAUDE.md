@@ -58,7 +58,11 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 7. **Stats** ("📊 סטטיסטיקה והחבר׳ה שלי" on the start screen, signed-in only; `StatsScreen`). Only closed online games the viewer **played in** (had a seat) count; local tables never do; a reopened game drops out until it's closed again. Only the viewer sees their stats.
    - "📊 שלי": games, total net, average per game, best/worst night, an SVG chart (net per night as bars + running total line, oldest on the right for RTL, no chart library), fun facts ("הפסיד הכל" count = left with 0 chips, average buy-ins per night, current/best winning streak = nights in profit in a row, an even night breaks it), and the list of games (table name, date) that opens the table.
    - "👥 החבר׳ה שלי": everyone the viewer sat with, numbers only from those shared closed games; accounts by `user_id` with the profile name, guests grouped by name with an "אורח" mark; sort by total, games or average.
-   - **Hiding games** (e.g. test games): 🙈 next to a game in "המשחקים שלי" (two taps) hides it from the viewer's own stats **and** their "החבר׳ה שלי". Nothing is deleted and nothing changes for other players. "🙈 משחקים מוסתרים (N)" lists them with "הצג שוב". Stored per user in `hidden_games`.
+   - **Hiding / removing games** (e.g. test games): "⋯" next to a game (in "המשחקים שלי" and in "משחקים מוסתרים") opens two choices, both only about the viewer's own stats **and** their "החבר׳ה שלי":
+     - "🙈 הסתר מהסטטיסטיקה שלי": can be undone ("🙈 משחקים מוסתרים (N)" → "הצג שוב").
+     - "🗑️ מחק מהסטטיסטיקה שלי לצמיתות" (two taps): like hiding, but with no way back; it leaves the hidden list too.
+     - Neither ever deletes the game or changes anything for other players. Deleting a whole table stays manager-only, in ⚙️ table management.
+     - Stored per user in `hidden_games` (`permanent` = removed for good).
    - Logic: pure functions in `src/lib/stats.js` (tested); data from the views via `src/lib/statsData.js`.
 
 ## Settlement algorithm rules (do not break these)
@@ -138,8 +142,8 @@ Build in steps and stop for the user's confirmation after each step.
 | `table_log` | who did what and when (`actor_id`, `action`, `details` jsonb) | people in the table | **nobody** directly; only triggers (`private.log_*`) write it |
 | view `my_games` | the viewer's closed games where they had a seat: table name, `ended_at`, own `final_net`, own buy-in total/count, player count | the viewer only (filters on `auth.uid()`; `security_invoker`, so RLS applies) | nobody (select only, nothing for anon) |
 | view `my_tablemates` | per person the viewer sat with in those games: `mate_key` (user id, or `guest:<name>`), profile name / guest name, games, total net | the viewer only (same) | nobody |
-| `hidden_games` | per-user list of games hidden from **that user's** stats (`user_id`, `table_id`, `hidden_at`); `my_games` and `my_tablemates` skip them | the user, own rows only | the user: insert own rows for tables they belong to, delete own rows; no updates |
-| view `my_hidden_games` | the viewer's hidden games (name, status, date, own `final_net`) for the "משחקים מוסתרים" screen | the viewer only (`security_invoker`) | nobody |
+| `hidden_games` | per-user list of games hidden from **that user's** stats (`user_id`, `table_id`, `hidden_at`, `permanent`); `my_games` and `my_tablemates` skip all of them | the user, own rows only | the user: insert own rows for tables they belong to; delete (unhide) own rows only if not `permanent`; update only `permanent`, only false → true (column grant + policy) |
+| view `my_hidden_games` | the viewer's hidden games that can still come back (not `permanent`; name, status, date, own `final_net`) for the "משחקים מוסתרים" screen | the viewer only (`security_invoker`) | nobody |
 
 ## Roles & security rules (never weaken)
 - **Manager** (`poker_tables.manager_id`): everything in their table. Also plays. **Only the manager** appoints/removes co-managers, ends/closes (or reopens) the game, renames the table, changes the buy-in mode, changes the invite code and deletes the table.
@@ -152,7 +156,7 @@ Build in steps and stop for the user's confirmation after each step.
 - **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges: stats views are always `security_invoker = true`, filter on `auth.uid()`, count only `status = 'ended'` tables where the viewer has a seat, and are granted `select` to `authenticated` only.
 - Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
 - Every new table: enable RLS, add policies, add explicit grants (never to `anon` unless truly public), index foreign keys, and extend `supabase/tests/rls_test.sql`.
-- `supabase/tests/rls_test.sql` must pass (261+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
+- `supabase/tests/rls_test.sql` must pass (274+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
 
 Design rules so phase 1 code carries over:
 - The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.

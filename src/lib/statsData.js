@@ -43,7 +43,8 @@ export function toHidden(row) {
   };
 }
 
-// my_games and my_tablemates already leave out the viewer's hidden games.
+// my_games and my_tablemates already leave out the viewer's hidden (and removed) games;
+// my_hidden_games lists only the ones that can still be brought back.
 export async function loadStats() {
   const [games, mates, hidden] = await Promise.all([
     supabase.from('my_games').select('*').order('ended_at'),
@@ -51,6 +52,16 @@ export async function loadStats() {
     supabase.from('my_hidden_games').select('*').order('hidden_at', { ascending: false }),
   ]);
   return { games: must(games).map(toGame), mates: must(mates).map(toMate), hidden: must(hidden).map(toHidden) };
+}
+
+// "מחק": removed from the viewer's own stats for good (no way back). The game
+// itself and everyone else's stats are untouched; the database blocks undoing it.
+export async function removeGameForGood(tableId) {
+  const { error } = await supabase.from('hidden_games').insert({ table_id: tableId, permanent: true });
+  if (!error) return;
+  if (error.code !== '23505') throw error;
+  // Already hidden: mark that row as permanent.
+  must(await supabase.from('hidden_games').update({ permanent: true }).eq('table_id', tableId));
 }
 
 // Hiding only affects the viewer's own stats; nothing is deleted.

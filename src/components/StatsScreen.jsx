@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { hideGame, loadStats, unhideGame } from '../lib/statsData.js';
+import { hideGame, loadStats, removeGameForGood, unhideGame } from '../lib/statsData.js';
 import { MATE_SORTS, personalStats, sortMates, withAverages } from '../lib/stats.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { suggestedColor } from '../lib/colors.js';
 import Avatar from './Avatar.jsx';
+import BottomSheet from './BottomSheet.jsx';
 import NetChart from './NetChart.jsx';
 
 const tone = (n) => (n > 0 ? 'text-emerald-300' : n < 0 ? 'text-rose-300' : 'text-slate-300');
@@ -23,20 +24,71 @@ function gameLabel(g) {
   return g.tableName ? `${g.tableName} · ${formatDate(g.endedAt)}` : formatDate(g.endedAt);
 }
 
-// Two taps, so a stray tap doesn't hide a game.
-function HideButton({ onHide }) {
-  const [confirm, setConfirm] = useState(false);
+function OptionsButton({ onClick }) {
   return (
     <button
       type="button"
-      onClick={() => (confirm ? onHide() : setConfirm(true))}
-      aria-label="הסתר מהסטטיסטיקה שלי"
-      className={`shrink-0 rounded-xl px-2.5 py-2 text-xs font-bold transition active:scale-95 ${
-        confirm ? 'bg-amber-300 text-slate-900' : 'bg-slate-950/50 text-slate-400'
-      }`}
+      onClick={onClick}
+      aria-label="אפשרויות למשחק"
+      className="shrink-0 rounded-xl bg-slate-950/50 px-3 py-2 text-lg font-bold leading-none text-slate-300 active:scale-95"
     >
-      {confirm ? 'להסתיר?' : '🙈'}
+      ⋯
     </button>
+  );
+}
+
+const OPTION = 'flex w-full items-start gap-3 rounded-2xl p-3 text-start transition active:scale-[0.98]';
+
+// Hide from my stats (can be undone) or remove from my stats for good. Both are
+// only about the viewer: the game itself and other players are never touched.
+function GameOptions({ game, hidden, onHide, onUnhide, onRemove, onClose }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  return (
+    <BottomSheet
+      onClose={onClose}
+      title={
+        <div className="mb-4">
+          <h2 className="truncate text-xl font-bold">{game.tableName ?? 'שולחן בלי שם'}</h2>
+          {game.endedAt && <p className="text-sm text-slate-400">{formatDate(game.endedAt)}</p>}
+        </div>
+      }
+    >
+      <div className="space-y-2">
+        {hidden ? (
+          <button type="button" onClick={onUnhide} className={`${OPTION} bg-slate-800`}>
+            <span className="text-2xl">👁️</span>
+            <span>
+              <span className="block font-bold">הצג שוב בסטטיסטיקה</span>
+              <span className="block text-sm text-slate-400">המשחק יחזור לסטטיסטיקה שלך ול״החבר׳ה שלי״</span>
+            </span>
+          </button>
+        ) : (
+          <button type="button" onClick={onHide} className={`${OPTION} bg-slate-800`}>
+            <span className="text-2xl">🙈</span>
+            <span>
+              <span className="block font-bold">הסתר מהסטטיסטיקה שלי</span>
+              <span className="block text-sm text-slate-400">רק אצלך. שום דבר לא נמחק, ושאר השחקנים ממשיכים לראות אותו. אפשר להחזיר.</span>
+            </span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => (confirmDelete ? onRemove() : setConfirmDelete(true))}
+          className={`${OPTION} ${confirmDelete ? 'bg-rose-500 text-white' : 'bg-slate-800'}`}
+        >
+          <span className="text-2xl">🗑️</span>
+          <span>
+            <span className={`block font-bold ${confirmDelete ? '' : 'text-rose-300'}`}>
+              {confirmDelete ? 'בטוח? הקש שוב – אי אפשר להחזיר' : 'מחק מהסטטיסטיקה שלי לצמיתות'}
+            </span>
+            <span className={`block text-sm ${confirmDelete ? 'text-rose-50' : 'text-slate-400'}`}>
+              רק אצלך, בלי אפשרות להחזיר. המשחק עצמו לא נמחק, ושאר השחקנים ממשיכים לראות אותו.
+            </span>
+          </span>
+        </button>
+      </div>
+    </BottomSheet>
   );
 }
 
@@ -53,7 +105,7 @@ function HiddenLink({ count, onShowHidden }) {
   );
 }
 
-function Hidden({ hidden, onUnhide, onBack }) {
+function Hidden({ hidden, onUnhide, onOptions, onBack }) {
   return (
     <div className="space-y-3">
       <button type="button" onClick={onBack} className="text-sm font-bold text-slate-400">
@@ -83,6 +135,7 @@ function Hidden({ hidden, onUnhide, onBack }) {
               >
                 הצג שוב
               </button>
+              <OptionsButton onClick={() => onOptions(g)} />
             </li>
           ))}
         </ul>
@@ -91,7 +144,7 @@ function Hidden({ hidden, onUnhide, onBack }) {
   );
 }
 
-function Mine({ games, hiddenCount, onOpenTable, onHide, onShowHidden }) {
+function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden }) {
   const s = useMemo(() => personalStats(games), [games]);
   if (s.count === 0) {
     return (
@@ -160,11 +213,11 @@ function Mine({ games, hiddenCount, onOpenTable, onHide, onShowHidden }) {
                 </span>
                 <span className={`shrink-0 font-extrabold ${tone(g.net)}`}>{signed(g.net)}</span>
               </button>
-              <HideButton key={g.tableId} onHide={() => onHide(g.tableId)} />
+              <OptionsButton onClick={() => onOptions(g)} />
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-xs text-slate-500">🙈 מסתיר משחק (למשל משחק ניסיון) רק מהסטטיסטיקה שלך</p>
+        <p className="mt-2 text-xs text-slate-500">⋯ להסתרת משחק (למשל משחק ניסיון) מהסטטיסטיקה שלך, או מחיקה לצמיתות</p>
       </section>
 
       <HiddenLink count={hiddenCount} onShowHidden={onShowHidden} />
@@ -231,9 +284,11 @@ export default function StatsScreen({
   loader = loadStats,
   hide = hideGame,
   unhide = unhideGame,
+  removeForGood = removeGameForGood,
 }) {
   const [tab, setTab] = useState('mine');
   const [showHidden, setShowHidden] = useState(false);
+  const [options, setOptions] = useState(null); // { game, hidden } for the options sheet
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -307,13 +362,14 @@ export default function StatsScreen({
           hidden={data.hidden}
           onBack={() => setShowHidden(false)}
           onUnhide={(tableId) => run(() => unhide(tableId), 'המשחק חזר לסטטיסטיקה ✓')}
+          onOptions={(game) => setOptions({ game, hidden: true })}
         />
       ) : tab === 'mine' ? (
         <Mine
           games={data.games}
           hiddenCount={data.hidden.length}
           onOpenTable={onOpenTable}
-          onHide={(tableId) => run(() => hide(tableId), 'המשחק הוסתר מהסטטיסטיקה שלך 🙈')}
+          onOptions={(game) => setOptions({ game, hidden: false })}
           onShowHidden={() => setShowHidden(true)}
         />
       ) : (
@@ -326,6 +382,27 @@ export default function StatsScreen({
       )}
       {/* Keeps the last card off the bottom edge (iOS toolbar tint). */}
       <div className="h-6 shrink-0" />
+
+      {options && (
+        <GameOptions
+          key={options.game.tableId}
+          game={options.game}
+          hidden={options.hidden}
+          onClose={() => setOptions(null)}
+          onHide={() => {
+            setOptions(null);
+            run(() => hide(options.game.tableId), 'המשחק הוסתר מהסטטיסטיקה שלך 🙈');
+          }}
+          onUnhide={() => {
+            setOptions(null);
+            run(() => unhide(options.game.tableId), 'המשחק חזר לסטטיסטיקה ✓');
+          }}
+          onRemove={() => {
+            setOptions(null);
+            run(() => removeForGood(options.game.tableId), 'המשחק נמחק מהסטטיסטיקה שלך 🗑️');
+          }}
+        />
+      )}
     </div>
   );
 }
