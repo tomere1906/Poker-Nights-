@@ -5,7 +5,12 @@ import Avatar from './Avatar.jsx';
 
 // Name + color picker for the signed-in user's own profile.
 export default function ProfileForm({ profile, submitLabel, onSaved }) {
-  const [name, setName] = useState(profile.display_name ?? '');
+  // Until the name is confirmed, suggest just the first name (profiles created
+  // before the first-name rule may still hold the full Google name).
+  const [name, setName] = useState(() => {
+    const current = (profile.display_name ?? '').trim();
+    return profile.name_confirmed_at ? current : current.split(/\s+/)[0];
+  });
   const [color, setColor] = useState(profile.color ?? suggestedColor(profile.id));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);

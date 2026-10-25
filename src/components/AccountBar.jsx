@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { signInWithGoogle } from '../lib/auth.js';
-import { paletteColor, suggestedColor } from '../lib/colors.js';
-import Avatar from './Avatar.jsx';
+import Avatar, { profileAvatar } from './Avatar.jsx';
 
 function GoogleLogo() {
   return (
@@ -13,25 +12,6 @@ function GoogleLogo() {
       <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
     </svg>
   );
-}
-
-function ProfileAvatar({ profile }) {
-  const [broken, setBroken] = useState(false);
-  if (profile.avatar_url && !broken) {
-    return (
-      <img
-        src={profile.avatar_url}
-        alt=""
-        // Google profile pictures refuse requests that send a referrer.
-        referrerPolicy="no-referrer"
-        onError={() => setBroken(true)}
-        // The ring shows the user's chosen color.
-        style={{ '--tw-ring-color': paletteColor(profile.color ?? suggestedColor(profile.id)).hex }}
-        className="h-10 w-10 rounded-full object-cover ring-[3px]"
-      />
-    );
-  }
-  return <Avatar player={{ name: profile.display_name || '?', color: profile.color ?? suggestedColor(profile.id) }} size="h-10 w-10 text-base" />;
 }
 
 export default function AccountBar({ auth, onOpenProfile }) {
@@ -52,7 +32,7 @@ export default function AccountBar({ auth, onOpenProfile }) {
         onClick={onOpenProfile}
         className="flex w-full items-center gap-3 rounded-2xl bg-slate-800/70 p-2 ps-3 text-start ring-1 ring-white/5 active:scale-[0.99]"
       >
-        <ProfileAvatar profile={profile} />
+        <Avatar player={profileAvatar(profile)} size="h-10 w-10 text-base" />
         <span className="min-w-0 flex-1">
           <span className="block text-xs text-slate-400">מחובר/ת בתור</span>
           <span className="block truncate font-bold">{profile.display_name}</span>
