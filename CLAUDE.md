@@ -22,6 +22,7 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - **Never push to `main` or merge into `main` unless the user explicitly says so in that moment.** No exceptions for "small" fixes.
 - All new work happens on the `multiplayer` branch. Before committing, check `git branch --show-current`.
 - The user tests changes locally with `npm run dev`; there is no preview deploy of the branch.
+- Phone testing: Supabase Auth refuses to redirect to bare IPs, so the phone opens `http://<ip-with-dashes>.nip.io:5173` (e.g. `http://192-168-1-6.nip.io:5173`). `vite.config.js` allows only this machine's own nip.io names. Each such address must also be in Supabase → Authentication → URL Configuration → Redirect URLs.
 - Tag `v1` marks the live version from before multiplayer work (a safe point to return to).
 
 ## Deployment
