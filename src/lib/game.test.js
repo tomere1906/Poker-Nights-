@@ -33,6 +33,14 @@ describe('table settings', () => {
     expect(cleanSettings(undefined)).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('changes the rounding of the open table only', () => {
+    let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [30, 60] } });
+    s = gameReducer(seat(s, 'א'), { type: 'setRounding', unit: 50 });
+    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60], rounding: 50 });
+    expect(s.players).toHaveLength(1);
+    expect(gameReducer(s, { type: 'setRounding', unit: 3 }).settings.rounding).toBe(10);
+  });
+
   it('a new game closes the table but remembers the settings', () => {
     let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [30, 60] } });
     s = gameReducer(seat(s, 'א'), { type: 'newGame' });

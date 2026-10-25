@@ -180,7 +180,14 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
     );
   } else if (step === 'settle' && view.canManage) {
     body = (
-      <Settlement players={view.players} entries={entries} rounding={view.settings.rounding} tableName={view.name} onBack={() => setStep('end')}>
+      <Settlement
+        players={view.players}
+        entries={entries}
+        rounding={view.settings.rounding}
+        onRoundingChange={view.isManager ? (unit) => actions.setRounding(unit).catch(fail) : null}
+        tableName={view.name}
+        onBack={() => setStep('end')}
+      >
         <CloseTableButton
           isManager={view.isManager}
           missing={missing}

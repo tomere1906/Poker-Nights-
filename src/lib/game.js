@@ -226,6 +226,9 @@ export function gameReducer(state, action) {
       }
       return { ...state, endMode: action.mode, finals };
     }
+    case 'setRounding':
+      // Changed per night (also on the settlement screen); the saved defaults stay.
+      return { ...state, settings: { ...state.settings, rounding: cleanRounding(action.unit) } };
     case 'setView':
       return { ...state, view: action.view };
     case 'openTable':

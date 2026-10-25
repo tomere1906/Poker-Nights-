@@ -3,7 +3,7 @@ import { settle } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
-import { roundingLabel } from './RoundingPicker.jsx';
+import RoundingPicker, { roundingLabel } from './RoundingPicker.jsx';
 
 // "משחק חדש" for the local table: wipes the game after a second tap.
 export function NewGameButton({ onNewGame }) {
@@ -23,11 +23,13 @@ export function NewGameButton({ onNewGame }) {
 
 // Who pays whom. entries: [{ id, net }] (any numbers; settle() rounds them to
 // `rounding` and balances them). date: when the game ended (ms; default now).
-// children: extra buttons under "share" (new game, close table…).
+// onRoundingChange: shows the "עיגול סכומים" picker (before the game is closed;
+// it depends on the night's amounts). children: extra buttons under "share".
 export default function Settlement({
   players,
   entries,
   rounding = 1,
+  onRoundingChange = null,
   tableName = null,
   date = null,
   notice = null,
@@ -90,6 +92,13 @@ export default function Settlement({
       </div>
 
       {notice}
+
+      {onRoundingChange && (
+        <div className="mb-4 rounded-3xl bg-slate-800/70 p-3 ring-1 ring-white/5">
+          <p className="mb-2 text-sm font-medium text-slate-400">עיגול סכומים</p>
+          <RoundingPicker value={rounding} onChange={onRoundingChange} />
+        </div>
+      )}
 
       {transfers.length === 0 ? (
         <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-lg">כולם יצאו מאוזנים 🤝</p>

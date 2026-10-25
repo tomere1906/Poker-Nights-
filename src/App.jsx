@@ -211,7 +211,13 @@ export default function App() {
       )}
 
       {!needsName && !invite && screen === 'game' && view === 'settle' && (
-        <Settlement players={players} entries={localNets} rounding={settings.rounding} onBack={() => setView('end')}>
+        <Settlement
+          players={players}
+          entries={localNets}
+          rounding={settings.rounding}
+          onRoundingChange={(unit) => dispatch({ type: 'setRounding', unit })}
+          onBack={() => setView('end')}
+        >
           <NewGameButton
             onNewGame={() => {
               dispatch({ type: 'newGame' });
