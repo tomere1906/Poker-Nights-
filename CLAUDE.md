@@ -143,7 +143,7 @@ Build in steps and stop for the user's confirmation after each step.
 - **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges.
 - Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
 - Every new table: enable RLS, add policies, add explicit grants (never to `anon` unless truly public), index foreign keys, and extend `supabase/tests/rls_test.sql`.
-- `supabase/tests/rls_test.sql` must pass (207+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
+- `supabase/tests/rls_test.sql` must pass (216+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
 
 Design rules so phase 1 code carries over:
 - The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.
