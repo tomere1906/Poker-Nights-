@@ -202,7 +202,9 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle }) {
         })}
       </ul>
 
-      <div className="sticky bottom-0 mt-auto space-y-3 bg-gradient-to-t from-[#0b1120] via-[#0b1120] to-transparent pt-6">
+      {/* The dark band under the button (pb) keeps the screen's bottom edge the page
+          color: iOS Safari tints its toolbar from what touches that edge. */}
+      <div className="sticky bottom-0 mt-auto space-y-3 bg-gradient-to-t from-[#0b1120] via-[#0b1120] to-transparent pt-6 pb-3">
         <div className="flex justify-between rounded-2xl bg-slate-800/70 px-4 py-3 text-sm">
           {endMode === 'net' ? (
             <>

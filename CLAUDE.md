@@ -79,7 +79,7 @@ Build in steps and stop for the user's confirmation after each step.
    1. Connect: client in `src/lib/supabase.js`, env vars (done).
    2. Schema, grants, RLS as migrations + SQL tests that try to break the rules (done, 55 tests, Advisor clean).
    3. Google sign-in (done on desktop; iPhone home-screen app test still open).
-   4. **Display names**: pick a name on first login (prefilled with the Google first name), profile screen to change it, per-table nickname set by the manager. Migration + RLS + tests.
+   4. **Display names + colors**: pick a name (prefilled with the Google first name) and a color on first login; profile screen to change both; per-table nickname and color override set by the manager; guests get a manager-chosen color. Migration + RLS + tests.
    5. Create a table online + manager controls: settings, seating flow, buy-ins/undo, all in Supabase.
    6. Invites: "הזמן חברים" (Web Share, wa.me fallback, QR), opening the link → sign-in → auto-join; manager seats joined members or guests.
    7. Live table for players: Realtime, read-only.
@@ -88,7 +88,11 @@ Build in steps and stop for the user's confirmation after each step.
    10. Final security pass: Advisor, all SQL tests, docs; merging to `main` only when the user says so.
 3. **Share as image** (after the Supabase work): replace "העתק לוואטסאפ" with "שתף כתמונה": render the settlement card to PNG and open the share sheet (iPhone).
 
-## Names (rules)
+## Names & colors (rules)
+- Colors follow the same logic as names: `profiles.color` is the user's own pick (a small palette of clear, distinct colors, stored as an index). The manager may override it per table (`table_players.color`, null = use the profile color); guests always get a manager-chosen color. Users change only their own profile color; only the table's manager writes per-table colors.
+- The page background/theme color is `#0b1120` on every screen. Never let a colored element sit flush against the bottom edge of the viewport (iOS Safari tints its toolbar from it), and remove full-screen overlays (confetti) when they finish.
+
+### Names
 - `profiles.display_name` is the name everyone sees: tables, "החבר'ה שלי", stats. **Never show an email address to other users**; emails live only in `auth.users`.
 - A user may change only their own `display_name` (column-level grant + RLS). Google data sets it only on first sign-in; later sign-ins update the avatar only, never a chosen name.
 - Per-table name: `table_players.nickname`, written only by that table's manager. Shown name = nickname, else the profile's display name. Guests: nickname is their name.

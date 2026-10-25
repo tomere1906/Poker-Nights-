@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { DEFAULT_SETTINGS, MAX_PLAYERS, cleanSettings, gameReducer, initialState, normalizeState } from './lib/game.js';
 import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.js';
 import { useAuth } from './lib/auth.js';
@@ -14,6 +14,9 @@ import HomeScreen from './components/HomeScreen.jsx';
 import TableSetup from './components/TableSetup.jsx';
 import { CardsIcon } from './components/Icons.jsx';
 
+// Matches the page background (html/body in index.css and the theme-color meta).
+const THEME_COLOR = '#0b1120';
+
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, initialState, (s) => normalizeState(loadState(s)));
   // The app always opens on the start screen; the game itself is in `state`.
@@ -26,6 +29,14 @@ export default function App() {
   const toastTimer = useRef();
 
   useEffect(() => saveState(state), [state]);
+
+  // Every screen uses the same dark background; re-assert the theme color on
+  // each screen change so the browser toolbar never keeps a stale tint.
+  useEffect(() => {
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR);
+  }, [screen, state.view]);
+
+  const endConfetti = useCallback(() => setConfetti(0), []);
 
   function showToast(text) {
     clearTimeout(toastTimer.current);
@@ -211,7 +222,7 @@ export default function App() {
         />
       )}
 
-      {confetti > 0 && <Confetti key={confetti} />}
+      {confetti > 0 && <Confetti key={confetti} onDone={endConfetti} />}
       <Toast toast={toast} />
     </div>
   );
