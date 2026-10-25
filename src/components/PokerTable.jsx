@@ -27,7 +27,9 @@ export default function PokerTable({ players, started, placing, onPlace, onEmpty
   // Setup: fixed seats. Game on: players spread evenly.
   const slots = started ? count : MAX_PLAYERS;
   const taken = new Set(players.map((p) => p.seat));
-  const emptySeats = started ? [] : Array.from({ length: MAX_PLAYERS }, (_, i) => i).filter((i) => !taken.has(i));
+  // Empty seats get a "+" only for people who may seat players (onEmptySeat given).
+  const emptySeats =
+    started || !onEmptySeat ? [] : Array.from({ length: MAX_PLAYERS }, (_, i) => i).filter((i) => !taken.has(i));
   const dragged = drag && players.find((p) => p.id === drag.id);
 
   function dragHandlers(player) {
@@ -38,7 +40,7 @@ export default function PokerTable({ players, started, placing, onPlace, onEmpty
       },
       onPointerMove(e) {
         const p = pointer.current;
-        if (!p) return;
+        if (!p || !onMove) return; // read-only: taps only, no dragging
         if (!p.moving && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD) return;
         p.moving = true;
         setDrag({ id: p.id, x: e.clientX, y: e.clientY, over: seatUnder(e.clientX, e.clientY) });

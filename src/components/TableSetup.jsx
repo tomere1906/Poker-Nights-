@@ -12,9 +12,17 @@ function Card({ title, hint, children }) {
   );
 }
 
-export default function TableSetup({ defaults, onBack, onOpen }) {
+const BUY_IN_MODES = [
+  { id: 'managers', title: 'רק מנהלים', hint: 'רק אתה והמנהלים המשותפים מוסיפים כניסות' },
+  { id: 'self_add', title: 'כל אחד את שלו', hint: 'כל שחקן יכול גם להוסיף כניסות לעצמו. תיקונים רק אצל המנהלים' },
+];
+
+// online: an online table also chooses who adds buy-ins. onOpen(settings, buyInMode).
+export default function TableSetup({ defaults, online = false, onBack, onOpen }) {
   const [initialBuyIn, setInitialBuyIn] = useState(defaults.initialBuyIn);
   const [amounts, setAmounts] = useState(defaults.rebuyAmounts);
+  const [buyInMode, setBuyInMode] = useState('managers');
+  const [busy, setBusy] = useState(false);
 
   const distinct = new Set(amounts.filter((a) => a > 0));
   const allFilled = initialBuyIn > 0 && amounts.every((a) => a > 0);
@@ -34,7 +42,7 @@ export default function TableSetup({ defaults, onBack, onOpen }) {
         >
           →
         </button>
-        <h2 className="text-2xl font-extrabold">הגדרות שולחן</h2>
+        <h2 className="text-2xl font-extrabold">{online ? 'שולחן אונליין 🌐' : 'שולחן מקומי 📱'}</h2>
       </div>
 
       <div className="space-y-3">
@@ -92,13 +100,44 @@ export default function TableSetup({ defaults, onBack, onOpen }) {
             <p className="mt-3 text-sm text-amber-300">צריך לפחות {MIN_REBUY_BUTTONS} סכומים שונים</p>
           )}
         </Card>
+
+        {online && (
+          <Card title="מי מוסיף כניסות?" hint="אפשר לשנות גם אחר כך, בניהול השולחן">
+            <div className="space-y-2">
+              {BUY_IN_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setBuyInMode(m.id)}
+                  aria-pressed={buyInMode === m.id}
+                  className={`w-full rounded-2xl p-3 text-start transition active:scale-[0.99] ${
+                    buyInMode === m.id ? 'bg-emerald-400/15 ring-2 ring-emerald-400' : 'bg-slate-950/40'
+                  }`}
+                >
+                  <span className="block font-bold">
+                    {buyInMode === m.id ? '● ' : '○ '}
+                    {m.title}
+                  </span>
+                  <span className="block text-sm text-slate-400">{m.hint}</span>
+                </button>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
 
       <div className="mt-auto pt-6">
         <button
           type="button"
-          disabled={!valid}
-          onClick={() => onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts }))}
+          disabled={!valid || busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts }), buyInMode);
+            } finally {
+              setBusy(false);
+            }
+          }}
           className="w-full rounded-3xl bg-emerald-400 py-5 text-xl font-extrabold text-slate-900 shadow-xl shadow-emerald-400/25 transition active:scale-[0.98] disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
         >
           פתח שולחן 🃏

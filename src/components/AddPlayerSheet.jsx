@@ -3,34 +3,60 @@ import { MAX_REBUY_BUTTONS } from '../lib/game.js';
 import { formatShekel } from '../lib/format.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
+import Avatar from './Avatar.jsx';
 
-export default function AddPlayerSheet({ settings, onAdd, onClose }) {
+// people: signed-in users at the table who aren't seated yet (online tables).
+// Picking one seats their account; otherwise a guest is added by name.
+export default function AddPlayerSheet({ settings, people = [], onAdd, onClose }) {
   // The table's initial buy-in comes first (and is preselected); latecomers
   // who enter with more can pick a re-buy amount or type their own.
   const others = settings.rebuyAmounts.filter((a) => a !== settings.initialBuyIn);
   const choices = [settings.initialBuyIn, ...others].slice(0, MAX_REBUY_BUTTONS);
   const [name, setName] = useState('');
+  const [person, setPerson] = useState(null);
   const [amount, setAmount] = useState(settings.initialBuyIn);
-  const valid = name.trim() !== '' && amount > 0;
+  const valid = (person || name.trim() !== '') && amount > 0;
 
   function submit(e) {
     e.preventDefault();
-    if (valid) onAdd(name.trim(), amount);
+    if (!valid) return;
+    onAdd(person ? { name: person.name, amount, userId: person.userId } : { name: name.trim(), amount });
   }
 
   return (
-    <BottomSheet
-      onClose={onClose}
-      title={<h2 className="mb-4 text-xl font-bold">הוסף שחקן</h2>}
-    >
+    <BottomSheet onClose={onClose} title={<h2 className="mb-4 text-xl font-bold">הוסף שחקן</h2>}>
       <form onSubmit={submit} className="space-y-4">
+        {people.length > 0 && (
+          <div>
+            <p className="mb-2 text-sm text-slate-400">מחוברים לשולחן</p>
+            <div className="flex flex-wrap gap-2">
+              {people.map((p) => (
+                <button
+                  key={p.userId}
+                  type="button"
+                  onClick={() => setPerson(person?.userId === p.userId ? null : p)}
+                  aria-pressed={person?.userId === p.userId}
+                  className={`flex items-center gap-2 rounded-full py-1.5 ps-1.5 pe-3 font-bold transition active:scale-95 ${
+                    person?.userId === p.userId ? 'bg-emerald-400 text-slate-900' : 'bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  <Avatar player={p} size="h-8 w-8 text-xs" />
+                  {p.name}
+                  {p.isMe ? ' (אני)' : ''}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-sm text-slate-400">או אורח לפי שם</p>
+          </div>
+        )}
         <input
-          autoFocus
-          value={name}
+          autoFocus={people.length === 0}
+          value={person ? '' : name}
+          disabled={Boolean(person)}
           onChange={(e) => setName(e.target.value)}
-          placeholder="שם השחקן"
+          placeholder={person ? `נבחר: ${person.name}` : 'שם השחקן'}
           maxLength={20}
-          className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-lg outline-none ring-2 ring-transparent placeholder:text-slate-500 focus:ring-emerald-400"
+          className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-lg outline-none ring-2 ring-transparent placeholder:text-slate-500 focus:ring-emerald-400 disabled:opacity-60"
         />
         <div>
           <p className="mb-2 text-sm text-slate-400">קנייה ראשונה</p>

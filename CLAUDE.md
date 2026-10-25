@@ -40,7 +40,11 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - Code, comments, file names and commit messages stay in English.
 
 ## Features
-1. **Start screen**: the app always opens here. "פתח שולחן" when no table is open; "חזרה לשולחן" (with player count and pot) plus "פתח שולחן חדש" (tap twice, discards the current table) when one is. Tapping the logo in the game returns here.
+1. **Start screen**: the app always opens here, with two clearly separate sections:
+   - "🌐 שולחן אונליין עם חברים" (requires Google sign-in): back to the latest open online table, or open a new one.
+   - "📱 שולחן מקומי (בלי התחברות)": the phone-only table, exactly as before (stored in localStorage).
+   Tapping the logo in a table returns here.
+   - Online tables reuse the same table UI (`TableScreen`) as the local one; `src/lib/onlineTable.js` loads a table into the local state shape (`toView`) and writes changes to Supabase. Managers/co-managers get the edit controls; players see the table read-only (and in "כל אחד את שלו" mode can add buy-ins to their own seat). Header buttons: 📜 log and ⚙️ table management (buy-in mode, co-managers, delete table).
 2. **Table settings**: the table manager sets the initial buy-in and 2–4 quick re-buy amounts ("סכום אחר" is always available too). Stored per table in the game state and as the defaults for the next table (`poker-nights-settings` in localStorage). Adding a player preselects the initial buy-in; re-buy buttons use the chosen amounts.
 3. **Table view**: oval green felt table with a wood rim, up to 9 players. Before "המשחק התחיל": 9 fixed seats, each empty one with a "+" that seats a player there; "הוסף שחקן" fills the next free seat. After it starts: empty seats disappear, players spread evenly; latecomers are placed via "+" slots between players. Drag a player onto another seat to move/swap. Tap a player for re-buys, undo, remove, and the buy-in history (amount + time of each buy-in).
 4. **List view** (not built yet): toggle from the table view. Each player's name, number of buy-ins and total in, with the pot at the bottom.
