@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, cleanSettings, gameReducer, initialState, normalizeSt
 import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.js';
 import { useAuth } from './lib/auth.js';
 import { createOnlineTable } from './lib/onlineTable.js';
+import { captureInviteFromUrl, pendingInvite } from './lib/invite.js';
 import TableScreen from './components/TableScreen.jsx';
 import OnlineTable from './components/OnlineTable.jsx';
 import EndGame from './components/EndGame.jsx';
@@ -13,6 +14,7 @@ import HomeScreen from './components/HomeScreen.jsx';
 import TableSetup from './components/TableSetup.jsx';
 import NameSetup from './components/NameSetup.jsx';
 import ProfileScreen from './components/ProfileScreen.jsx';
+import JoinScreen from './components/JoinScreen.jsx';
 import { CardsIcon } from './components/Icons.jsx';
 
 // Matches the page background (html/body in index.css and the theme-color meta).
@@ -25,6 +27,11 @@ export default function App() {
   // 'home' | 'profile' | 'setup-local' | 'setup-online' | 'game' (local) | 'online'
   const [screen, setScreen] = useState('home');
   const [onlineTableId, setOnlineTableId] = useState(null);
+  // An invite link opened now (or before a Google sign-in redirect).
+  const [invite, setInvite] = useState(() => {
+    captureInviteFromUrl();
+    return pendingInvite();
+  });
   const auth = useAuth();
   // First sign-in: confirm a display name (and pick a color) before anything else.
   const needsName = Boolean(auth.session && auth.profile && !auth.profile.name_confirmed_at);
@@ -60,7 +67,23 @@ export default function App() {
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       {needsName && <NameSetup profile={auth.profile} onSaved={auth.setProfile} />}
 
-      {!needsName && screen === 'home' && (
+      {!needsName && invite && !auth.loading && (
+        <JoinScreen
+          invite={invite}
+          auth={auth}
+          onJoined={(tableId) => {
+            setInvite(null);
+            openOnline(tableId);
+            showToast('הצטרפת לשולחן! בחר כיסא 🪑');
+          }}
+          onCancel={() => {
+            setInvite(null);
+            goHome();
+          }}
+        />
+      )}
+
+      {!needsName && !invite && screen === 'home' && (
         <HomeScreen
           state={state}
           auth={auth}
@@ -72,7 +95,7 @@ export default function App() {
         />
       )}
 
-      {!needsName && screen === 'profile' && auth.profile && (
+      {!needsName && !invite && screen === 'profile' && auth.profile && (
         <ProfileScreen
           profile={auth.profile}
           onBack={goHome}
@@ -84,7 +107,7 @@ export default function App() {
         />
       )}
 
-      {!needsName && (screen === 'setup-local' || screen === 'setup-online') && (
+      {!needsName && !invite && (screen === 'setup-local' || screen === 'setup-online') && (
         <TableSetup
           online={screen === 'setup-online'}
           defaults={cleanSettings(loadSettings(DEFAULT_SETTINGS))}
@@ -107,11 +130,11 @@ export default function App() {
         />
       )}
 
-      {!needsName && screen === 'online' && onlineTableId && auth.session && (
+      {!needsName && !invite && screen === 'online' && onlineTableId && auth.session && (
         <OnlineTable key={onlineTableId} tableId={onlineTableId} userId={auth.session.user.id} onHome={goHome} showToast={showToast} />
       )}
 
-      {!needsName && screen === 'game' && (
+      {!needsName && !invite && screen === 'game' && (
         <header className="mb-2 flex items-center gap-2">
           <button type="button" onClick={goHome} aria-label="מסך הבית" className="flex items-center gap-2 rounded-2xl active:scale-95">
             <CardsIcon className="h-9 w-9 drop-shadow" />
@@ -121,16 +144,16 @@ export default function App() {
         </header>
       )}
 
-      {!needsName && screen === 'game' && view === 'table' && (
+      {!needsName && !invite && screen === 'game' && view === 'table' && (
         <TableScreen
           players={players}
           started={started}
           settings={settings}
-          onAdd={({ seat, position, name, amount }) =>
+          onAdd={({ seat, position, name, amount, color }) =>
             dispatch(
               started
-                ? { type: 'addPlayer', position, name, amount, at: Date.now() }
-                : { type: 'seatPlayer', seat, name, amount, at: Date.now() }
+                ? { type: 'addPlayer', position, name, amount, color, at: Date.now() }
+                : { type: 'seatPlayer', seat, name, amount, color, at: Date.now() }
             )
           }
           onBuyIn={(player, amount) => dispatch({ type: 'addBuyIn', id: player.id, amount, at: Date.now() })}
@@ -143,7 +166,7 @@ export default function App() {
         />
       )}
 
-      {!needsName && screen === 'game' && view === 'end' && (
+      {!needsName && !invite && screen === 'game' && view === 'end' && (
         <EndGame
           state={state}
           onMode={(mode) => dispatch({ type: 'setEndMode', mode })}
@@ -156,7 +179,7 @@ export default function App() {
         />
       )}
 
-      {!needsName && screen === 'game' && view === 'settle' && (
+      {!needsName && !invite && screen === 'game' && view === 'settle' && (
         <Settlement
           state={state}
           onBack={() => setView('end')}

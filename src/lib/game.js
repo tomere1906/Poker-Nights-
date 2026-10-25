@@ -3,7 +3,7 @@
 // Once it starts, seats are compacted to 0..n-1 so the table never shows gaps.
 
 export const MAX_PLAYERS = 9;
-export const AVATAR_COLORS = 8; // = PALETTE.length in src/lib/colors.js
+export const AVATAR_COLORS = 12; // = PALETTE.length in src/lib/colors.js
 export const MIN_REBUY_BUTTONS = 2;
 export const MAX_REBUY_BUTTONS = 4;
 
@@ -104,8 +104,9 @@ function newId() {
 }
 
 // `at` is the buy-in time, passed in by the UI so the reducer stays pure.
-function newPlayer(state, name, seat, amount, at = null) {
-  return { id: newId(), name, seat, color: nextColor(state.players), buyIns: [amount], buyInTimes: [at] };
+// `color` is the color picked in the add sheet; otherwise the first free one.
+function newPlayer(state, name, seat, amount, at = null, color = null) {
+  return { id: newId(), name, seat, color: color ?? nextColor(state.players), buyIns: [amount], buyInTimes: [at] };
 }
 
 export function gameReducer(state, action) {
@@ -115,7 +116,7 @@ export function gameReducer(state, action) {
       const { name, amount } = action;
       const seat = action.seat ?? firstFreeSeat(state.players);
       if (seat === null || state.players.some((p) => p.seat === seat)) return state;
-      return { ...state, players: [...state.players, newPlayer(state, name, seat, amount, action.at)] };
+      return { ...state, players: [...state.players, newPlayer(state, name, seat, amount, action.at, action.color)] };
     }
     case 'addPlayer': {
       // Game on: position is the seat the new player takes; players from there on shift by one.
@@ -123,7 +124,7 @@ export function gameReducer(state, action) {
       if (state.players.length >= MAX_PLAYERS) return state;
       const position = Math.min(Math.max(action.position, 0), state.players.length);
       const shifted = state.players.map((p) => (p.seat >= position ? { ...p, seat: p.seat + 1 } : p));
-      return { ...state, players: [...shifted, newPlayer(state, name, position, amount, action.at)] };
+      return { ...state, players: [...shifted, newPlayer(state, name, position, amount, action.at, action.color)] };
     }
     case 'addBuyIn':
       return {

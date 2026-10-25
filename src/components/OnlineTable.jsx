@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useOnlineTable } from '../lib/onlineTable.js';
+import { inviteLink, useOnlineTable } from '../lib/onlineTable.js';
+import InviteSheet from './InviteSheet.jsx';
 import TableScreen from './TableScreen.jsx';
 import TableLog from './TableLog.jsx';
 import TableManageSheet from './TableManageSheet.jsx';
@@ -17,11 +18,16 @@ export default function OnlineTable({ tableId, userId, onHome, showToast }) {
     <header className="mb-2 flex items-center gap-2">
       <button type="button" onClick={onHome} aria-label="מסך הבית" className="flex items-center gap-2 rounded-2xl active:scale-95">
         <CardsIcon className="h-9 w-9 drop-shadow" />
-        <h1 className="text-xl font-extrabold tracking-tight">Poker Nights</h1>
+        <h1 className="sr-only">Poker Nights</h1>
       </button>
       <span className="rounded-full bg-sky-400/15 px-2 py-0.5 text-xs font-bold text-sky-300">🌐 אונליין</span>
       {view && (
         <div className="ms-auto flex gap-2">
+          {view.canManage && view.status !== 'ended' && (
+            <button type="button" onClick={() => setPanel('invite')} className={HEADER_BUTTON}>
+              💌 הזמן
+            </button>
+          )}
           <button type="button" onClick={() => setPanel('log')} className={HEADER_BUTTON}>
             📜 יומן
           </button>
@@ -80,8 +86,10 @@ export default function OnlineTable({ tableId, userId, onHome, showToast }) {
         onStart={actions.start}
         onEnd={null}
         onEditIdentity={actions.setIdentity}
+        onSeatSelf={view.canSeatSelf ? actions.seatSelf : undefined}
         showToast={showToast}
       />
+      {panel === 'invite' && <InviteSheet link={inviteLink(view)} onClose={() => setPanel(null)} />}
       {panel === 'manage' && (
         <TableManageSheet
           view={view}

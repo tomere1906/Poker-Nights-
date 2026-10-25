@@ -85,21 +85,22 @@ Build in steps and stop for the user's confirmation after each step.
    3. Google sign-in (done: desktop and the iPhone home-screen app).
    4. **Display names + colors**: pick a name (prefilled with the Google first name) and a color on first login; profile screen to change both; per-table nickname and color override set by the manager; guests get a manager-chosen color. Migration + RLS + tests.
    - **Decided before step 5:** co-managers + a per-table buy-in mode + a change log (see Roles). Built in step 5's first migration.
-   5. Create a table online + manager controls: settings (incl. buy-in mode), seating flow, buy-ins/undo, co-managers, change log view, all in Supabase.
-   6. **Google branding + publishing**: simple Hebrew privacy policy and terms pages on the site; guide the user through Google Auth Platform → Branding (name, support email, home page, privacy/terms links, authorized domain) and publishing the app (basic scopes only: openid, email, profile), so the consent screen looks trustworthy and friends can sign in.
-      - **No logo for now**: uploading one triggers Google's manual brand verification (days to weeks). Add it later only if needed.
-      - The pages must be reachable at public URLs, i.e. on the live site (`main`). Pushing them to `main` needs the user's explicit OK at that moment.
-      - The consent screen will still name `emkzkgpqaupqudzgewxa.supabase.co` unless a Supabase custom domain (paid) is used.
-   7. Invites: "הזמן חברים" (Web Share, wa.me fallback, QR); opening the link → sign-in → auto-join → **the player picks their own free seat**. The manager can still move anyone and seat guests.
-      - RLS + tests: a member may insert only their own seat (`user_id = auth.uid()`), only once per table, only in a free seat, only before the game ends, with no nickname/color override and no results. They can't move others or themselves afterwards (only the manager moves). Seats must be unique per table (`unique (table_id, seat)`, deferrable so the manager can swap two players in one transaction/RPC).
-   8. Live table for players: Realtime, read-only.
-   9. End game online: results entry (+/−, מאוזן, הפסיד הכל), whole-shekel settlement, close the table, store `final_net`.
-   10. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
+   5. Create a table online + manager controls: settings (incl. buy-in mode), seating flow, buy-ins/undo, co-managers, change log view, all in Supabase (done).
+   6. **Invites** (in progress): "הזמן חברים" (Web Share, wa.me fallback, QR); opening the link → sign-in → auto-join → **the player picks their own free seat**. The manager can still move anyone and seat guests. Tested with Google Cloud test users until step 10.
+      - RLS + tests: a member may insert only their own seat (`user_id = auth.uid()`), only once per table, only in a free seat, only before the game ends, with no nickname/color override and no results. They can't move others or themselves afterwards (only managers move). Seats are unique per table (`unique (table_id, seat)`, deferrable; managers swap two players atomically via `public.swap_seats`, a SECURITY INVOKER function so RLS still applies).
+      - Also: palette grows to 12 colors (indexes 0-11); new players get a color not yet taken at the table.
+   7. Live table for players: Realtime, read-only.
+   8. End game online: results entry (+/−, מאוזן, הפסיד הכל), whole-shekel settlement, close the table, store `final_net`.
+   9. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
+   10. **Google branding + publishing**, right before inviting all friends: simple Hebrew privacy policy and terms pages on the site; guide the user through Google Auth Platform → Branding (name, support email, home page, privacy/terms links, authorized domain) and publishing the app (basic scopes only: openid, email, profile), so the consent screen looks trustworthy and friends can sign in.
+       - **No logo for now**: uploading one triggers Google's manual brand verification (days to weeks). Add it later only if needed.
+       - The pages must be reachable at public URLs, i.e. on the live site (`main`). Pushing them to `main` needs the user's explicit OK at that moment.
+       - The consent screen will still name `emkzkgpqaupqudzgewxa.supabase.co` unless a Supabase custom domain (paid) is used.
    11. Final security pass: Advisor, all SQL tests, docs; merging to `main` only when the user says so.
 3. **Share as image** (after the Supabase work): replace "העתק לוואטסאפ" with "שתף כתמונה": render the settlement card to PNG and open the share sheet (iPhone).
 
 ## Names & colors (rules)
-- Colors follow the same logic as names: `profiles.color` is the user's own pick (a small palette of clear, distinct colors, stored as an index). The manager may override it per table (`table_players.color`, null = use the profile color); guests always get a manager-chosen color. Users change only their own profile color; only the table's manager writes per-table colors.
+- Colors follow the same logic as names: `profiles.color` is the user's own pick (a palette of 12 clear, distinct colors, stored as an index 0-11; append only, never reorder). The manager may override it per table (`table_players.color`, null = use the profile color); guests always get a manager-chosen color. Users change only their own profile color; only the table's manager writes per-table colors.
 - The page background/theme color is `#0b1120` on every screen. Never let a colored element sit flush against the bottom edge of the viewport (iOS Safari tints its toolbar from it), and remove full-screen overlays (confetti) when they finish.
 
 ### Names

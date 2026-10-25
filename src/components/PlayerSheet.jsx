@@ -28,7 +28,7 @@ function IdentityEditor({ player, onSave }) {
         maxLength={30}
         className="w-full rounded-xl bg-slate-950/60 px-3 py-2.5 text-lg outline-none ring-2 ring-transparent focus:ring-emerald-400"
       />
-      <div className="grid grid-cols-8 gap-1.5">
+      <div className="grid grid-cols-6 gap-1.5">
         {PALETTE.map((c, i) => (
           <button
             key={c.name}

@@ -4,6 +4,7 @@ import { formatShekel } from '../lib/format.js';
 import PokerTable from './PokerTable.jsx';
 import AddPlayerSheet from './AddPlayerSheet.jsx';
 import PlayerSheet from './PlayerSheet.jsx';
+import BottomSheet from './BottomSheet.jsx';
 
 const PRIMARY =
   'flex-1 rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none';
@@ -26,9 +27,11 @@ export default function TableScreen({
   onStart,
   onEnd,
   onEditIdentity,
+  onSeatSelf,
   showToast,
 }) {
-  const [sheet, setSheet] = useState(null); // { type: 'add', seat | position } | { type: 'player', id }
+  // { type: 'add', seat | position } | { type: 'player', id } | { type: 'seat-self', seat }
+  const [sheet, setSheet] = useState(null);
   const [placing, setPlacing] = useState(false);
   const close = () => setSheet(null);
   const full = players.length >= MAX_PLAYERS;
@@ -61,7 +64,13 @@ export default function TableScreen({
             setPlacing(false);
             setSheet({ type: 'add', position });
           }}
-          onEmptySeat={canManage ? (seat) => setSheet({ type: 'add', seat }) : undefined}
+          onEmptySeat={
+            canManage
+              ? (seat) => setSheet({ type: 'add', seat })
+              : onSeatSelf
+                ? (seat) => setSheet({ type: 'seat-self', seat })
+                : undefined
+          }
           onPlayerTap={(p) => setSheet({ type: 'player', id: p.id })}
           onMove={canManage ? (id, seat) => act(() => onMove(id, seat)) : undefined}
         />
@@ -111,21 +120,57 @@ export default function TableScreen({
             )}
           </div>
         </>
+      ) : onSeatSelf ? (
+        started ? (
+          <button type="button" onClick={() => setSheet({ type: 'seat-self', seat: null })} className={PRIMARY}>
+            שב לשולחן 🪑
+          </button>
+        ) : (
+          <p className="rounded-2xl bg-emerald-400/15 py-3 text-center font-bold text-emerald-200">
+            הקש על + ליד כיסא פנוי כדי לשבת
+          </p>
+        )
       ) : (
         <p className="rounded-2xl bg-slate-800/60 py-3 text-center text-sm text-slate-400">
           צפייה בשולחן · רק המנהלים מעדכנים
         </p>
       )}
 
+      {sheet?.type === 'seat-self' && (
+        <BottomSheet
+          onClose={close}
+          title={
+            <h2 className="mb-2 text-xl font-bold">
+              {sheet.seat === null ? 'להצטרף לשולחן?' : `לשבת בכיסא ${sheet.seat + 1}?`}
+            </h2>
+          }
+        >
+          <p className="mb-4 text-sm text-slate-400">
+            {sheet.seat === null ? 'תשב בסוף השולחן. ' : ''}מנהל השולחן יכול להעביר אותך מקום אחר כך.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              act(() => onSeatSelf(sheet.seat), 'התיישבת! בהצלחה 🍀');
+            }}
+            className="w-full rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 active:scale-[0.98]"
+          >
+            שב כאן 🪑
+          </button>
+        </BottomSheet>
+      )}
+
       {sheet?.type === 'add' && (
         <AddPlayerSheet
           settings={settings}
           people={people}
+          usedColors={players.map((p) => p.color)}
           onClose={close}
-          onAdd={({ name, amount, userId }) => {
+          onAdd={({ name, amount, color, userId }) => {
             close();
             act(
-              () => onAdd({ seat: sheet.seat, position: sheet.position, name, amount, userId }),
+              () => onAdd({ seat: sheet.seat, position: sheet.position, name, amount, color, userId }),
               `${name} הצטרף/ה לשולחן 🎉`
             );
           }}

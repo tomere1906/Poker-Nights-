@@ -7,6 +7,7 @@
 --
 -- Users:  M = manager of T1 and T3 · P = player in T1, T2, T3 · S = stranger · Q = manager of T2
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
+--         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -138,7 +139,7 @@ begin
       (126, 'M''s nickname for P stays in T1 only',      'P', $$select count(*) from public.table_players where user_id = '22222222-2222-4222-8222-222222222222' and nickname = 'פי הגדול'$$, 'count:1'),
       (127, 'Guest without a color is rejected',         'Q', $$insert into public.table_players (table_id, nickname, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'אורח', 5)$$, 'error:23514'),
       (128, 'Guest without a name is rejected',          'Q', $$insert into public.table_players (table_id, color, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 2, 5)$$, 'error:23514'),
-      (129, 'Per-table color outside the palette is rejected', 'Q', $$update public.table_players set color = 8 where id = 'b0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
+      (129, 'Per-table color outside the palette is rejected', 'Q', $$update public.table_players set color = 12 where id = 'b0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
 
       -- ---------------- co-managers (table T3) ----------------
       (140, 'M opens table T3',                          'M', $$insert into public.poker_tables (id, invite_code) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'code-t3')$$, 'ok'),
@@ -193,6 +194,35 @@ begin
       (191, 'P cannot self-add after the game ended',    'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
       (192, 'Log: M ended the game',                     'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and action = 'game_ended' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
       (193, 'M can still delete the table (log cascades)', 'M', $$delete from public.poker_tables where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:1'),
+
+      -- ---------------- 12 colors ----------------
+      (200, 'Color 11 (lime) is accepted for a profile',   'P', $$update public.profiles set color = 11 where id = '22222222-2222-4222-8222-222222222222'$$, 'rows:1'),
+      (201, 'Color 12 is rejected for a profile',          'P', $$update public.profiles set color = 12 where id = '22222222-2222-4222-8222-222222222222'$$, 'error:23514'),
+
+      -- ---------------- invites + members picking their own seat (table T4) ----------------
+      (202, 'M opens table T4',                            'M', $$insert into public.poker_tables (id, invite_code) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'code-t4')$$, 'ok'),
+      (203, 'M seats a guest in seat 1 (index 0), color 11',         'M', $$insert into public.table_players (id, table_id, nickname, color, seat) values ('e0000000-0000-4000-8000-000000000001', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'אורח', 11, 0)$$, 'ok'),
+      (204, 'P joins T4 with the invite',                  'P', $$insert into public.table_members (table_id, invite_code) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'code-t4')$$, 'ok'),
+      (205, 'Q joins T4 with the invite',                  'Q', $$insert into public.table_members (table_id, invite_code) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'code-t4')$$, 'ok'),
+      (206, 'P takes his own free seat (seat 4 = index 3)',          'P', $$insert into public.table_players (id, table_id, user_id, seat) values ('e0000000-0000-4000-8000-000000000002', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', '22222222-2222-4222-8222-222222222222', 3)$$, 'ok'),
+      (207, 'P cannot take a second seat',                 'P', $$insert into public.table_players (table_id, user_id, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '22222222-2222-4222-8222-222222222222', 5)$$, 'error:23505'),
+      (208, 'P cannot seat a guest',                       'P', $$insert into public.table_players (table_id, nickname, color, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'חבר', 1, 5)$$, 'deny'),
+      (209, 'P cannot seat another user (Q)',              'P', $$insert into public.table_players (table_id, user_id, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '44444444-4444-4444-8444-444444444444', 5)$$, 'deny'),
+      (210, 'Q cannot take an occupied seat',              'Q', $$insert into public.table_players (table_id, user_id, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '44444444-4444-4444-8444-444444444444', 0)$$, 'error:23505'),
+      (211, 'Q cannot sit with a per-table name',          'Q', $$insert into public.table_players (table_id, user_id, nickname, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '44444444-4444-4444-8444-444444444444', 'המלך', 6)$$, 'deny'),
+      (212, 'Q cannot sit with a color override',          'Q', $$insert into public.table_players (table_id, user_id, color, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '44444444-4444-4444-8444-444444444444', 3, 6)$$, 'deny'),
+      (213, 'Q cannot sit with a result already set',      'Q', $$insert into public.table_players (table_id, user_id, final_value, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '44444444-4444-4444-8444-444444444444', 500, 6)$$, 'deny'),
+      (214, 'S (not invited) cannot take a seat',          'S', $$insert into public.table_players (table_id, user_id, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '33333333-3333-4333-8333-333333333333', 6)$$, 'deny'),
+      (215, 'P cannot move himself afterwards',            'P', $$update public.table_players set seat = 7 where id = 'e0000000-0000-4000-8000-000000000002'$$, 'rows:0'),
+      (216, 'P calling swap_seats changes nothing',        'P', $$select public.swap_seats('e0000000-0000-4000-8000-000000000002', 0)$$, 'ok'),
+      (217, '…seats are unchanged',                        'M', $$select count(*) from public.table_players where (id = 'e0000000-0000-4000-8000-000000000001' and seat = 0) or (id = 'e0000000-0000-4000-8000-000000000002' and seat = 3)$$, 'count:2'),
+      (218, 'M swaps P and the guest via swap_seats',      'M', $$select public.swap_seats('e0000000-0000-4000-8000-000000000002', 0)$$, 'ok'),
+      (219, '…they swapped seats',                         'M', $$select count(*) from public.table_players where (id = 'e0000000-0000-4000-8000-000000000001' and seat = 3) or (id = 'e0000000-0000-4000-8000-000000000002' and seat = 0)$$, 'count:2'),
+      (220, 'Two players can never share a seat',          'M', $$update public.table_players set seat = 0 where id = 'e0000000-0000-4000-8000-000000000001'$$, 'error:23505'),
+      (221, 'Anon cannot call swap_seats',                 'anon', $$select public.swap_seats('e0000000-0000-4000-8000-000000000002', 5)$$, 'deny'),
+      (222, 'Log: P seated himself',                       'M', $$select count(*) from public.table_log where table_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' and action = 'player_seated' and actor_id = '22222222-2222-4222-8222-222222222222'$$, 'count:1'),
+      (223, 'M ends T4',                                   'M', $$update public.poker_tables set status = 'ended' where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'$$, 'rows:1'),
+      (224, 'Q cannot take a seat after the game ended',   'Q', $$insert into public.table_players (table_id, user_id, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '44444444-4444-4444-8444-444444444444', 6)$$, 'deny'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 6 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log') and rowsecurity$$, 'count:6')

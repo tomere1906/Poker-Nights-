@@ -3,8 +3,9 @@
 // each user may actually do; the UI only hides what would be refused anyway.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from './supabase.js';
-import { AVATAR_COLORS, cleanSettings, firstFreeSeat } from './game.js';
-import { suggestedColor } from './colors.js';
+import { MAX_PLAYERS, cleanSettings, firstFreeSeat } from './game.js';
+import { firstFreeColor, suggestedColor } from './colors.js';
+import { appUrl } from './auth.js';
 
 const TABLE_COLUMNS =
   'id, manager_id, status, initial_buy_in, rebuy_amounts, buy_in_mode, invite_code, created_at';
@@ -23,6 +24,21 @@ export async function createOnlineTable(settings, buyInMode) {
       .single()
   );
   return row.id;
+}
+
+// The link friends open to join: the table id + its secret invite code.
+export function inviteLink(view) {
+  const url = new URL(appUrl());
+  url.searchParams.set('join', view.id);
+  url.searchParams.set('key', view.inviteCode); // not 'code': Supabase sign-in uses it
+  return url.href;
+}
+
+// Join a table with its invite code (RLS checks the code and that it hasn't ended).
+// Joining twice is fine: the second time is a no-op.
+export async function joinTable(tableId, code) {
+  const { error } = await supabase.from('table_members').insert({ table_id: tableId, invite_code: code });
+  if (error && error.code !== '23505') throw error;
 }
 
 // Tables I manage or joined that haven't ended (RLS returns only those).
@@ -99,9 +115,13 @@ export function toView(raw, userId) {
   });
   const people = [
     person(table.manager_id, table.manager, { isManager: true, isCoManager: false }),
-    ...raw.members.map((m) => person(m.user_id, m.profile, { isManager: false, isCoManager: m.is_co_manager })),
+    // (The manager may also have a member row, e.g. after opening their own invite link.)
+    ...raw.members
+      .filter((m) => m.user_id !== table.manager_id)
+      .map((m) => person(m.user_id, m.profile, { isManager: false, isCoManager: m.is_co_manager })),
   ];
   const seated = new Set(players.map((p) => p.userId).filter(Boolean));
+  const ended = table.status === 'ended';
 
   return {
     id: table.id,
@@ -115,15 +135,11 @@ export function toView(raw, userId) {
     unseated: people.filter((p) => !seated.has(p.userId)),
     isManager,
     canManage,
+    // A player who joined by invite and isn't seated yet picks their own free seat.
+    canSeatSelf: !canManage && !ended && !seated.has(userId) && players.length < MAX_PLAYERS,
     myUserId: userId,
     log: raw.log,
   };
-}
-
-function nextFreeColor(players) {
-  const used = new Set(players.map((p) => p.color));
-  for (let i = 0; i < AVATAR_COLORS; i++) if (!used.has(i)) return i;
-  return players.length % AVATAR_COLORS;
 }
 
 // Writes. Each takes the current view (for seat math) and throws on failure.
@@ -135,25 +151,36 @@ function makeActions(view) {
     must(await supabase.from('table_players').update({ seat }).eq('id', playerId));
   }
 
-  async function insertPlayer({ seat, name, amount, userId }) {
+  // A user keeps their profile color unless another one was picked (per-table override).
+  async function insertPlayer({ seat, name, amount, color, userId }) {
+    const freeColor = color ?? firstFreeColor(view.players.map((p) => p.color));
+    const person = userId && view.people.find((p) => p.userId === userId);
     const row = userId
-      ? { table_id: tableId, user_id: userId, seat }
-      : { table_id: tableId, nickname: name, color: nextFreeColor(view.players), seat };
+      ? { table_id: tableId, user_id: userId, seat, color: person && freeColor !== person.color ? freeColor : null }
+      : { table_id: tableId, nickname: name, color: freeColor, seat };
     const player = must(await supabase.from('table_players').insert(row).select('id').single());
     must(await supabase.from('buy_ins').insert({ table_id: tableId, player_id: player.id, amount }));
   }
 
   return {
     // Setup: exact seat or the first free one. Game on: insert at a position, shifting the rest.
-    async add({ seat, position, name, amount, userId }) {
+    async add({ seat, position, name, amount, color, userId }) {
       if (!view.started) {
         const target = seat ?? firstFreeSeat(view.players);
         if (target === null) throw new Error('השולחן מלא');
-        return insertPlayer({ seat: target, name, amount, userId });
+        return insertPlayer({ seat: target, name, amount, color, userId });
       }
       const at = Math.min(Math.max(position ?? view.players.length, 0), view.players.length);
       for (const p of players().reverse()) if (p.seat >= at) await setSeat(p.id, p.seat + 1);
-      return insertPlayer({ seat: at, name, amount, userId });
+      return insertPlayer({ seat: at, name, amount, color, userId });
+    },
+
+    // A member takes their own seat: the tapped free seat, or (game on) the end of the table.
+    // No buy-in here: in "רק מנהלים" mode only managers add buy-ins.
+    async seatSelf(seat) {
+      const target = seat ?? (view.started ? view.players.length : firstFreeSeat(view.players));
+      if (target === null) throw new Error('השולחן מלא');
+      must(await supabase.from('table_players').insert({ table_id: tableId, user_id: view.myUserId, seat: target }));
     },
 
     async buyIn(player, amount) {
@@ -172,13 +199,10 @@ function makeActions(view) {
       }
     },
 
-    // Onto an empty seat: move. Onto a player: swap the two.
+    // Onto an empty seat: move. Onto a player: swap the two, atomically in the
+    // database (seats are unique per table, so two separate updates would collide).
     async move(playerId, seat) {
-      const mover = view.players.find((p) => p.id === playerId);
-      const other = view.players.find((p) => p.seat === seat && p.id !== playerId);
-      if (!mover) return;
-      if (other) await setSeat(other.id, mover.seat);
-      await setSeat(playerId, seat);
+      must(await supabase.rpc('swap_seats', { p_player: playerId, p_seat: seat }));
     },
 
     // Close the seat gaps (keeping the order) and mark the game as started.
