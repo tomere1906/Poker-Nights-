@@ -119,7 +119,7 @@ Build in steps and stop for the user's confirmation after each step.
 ## Database (supabase/migrations)
 | Table | Holds | Read | Write |
 |---|---|---|---|
-| `profiles` | display name, color (0-7), avatar, `name_confirmed_at` (email stays only in `auth.users`) | self + people who share a table | the user: only own `display_name`, `color`, `name_confirmed_at` (column grant); trigger: created on first sign-in, later only the avatar |
+| `profiles` | display name, color (0-11), avatar, `name_confirmed_at` (email stays only in `auth.users`) | self + people who share a table | the user: only own `display_name`, `color`, `name_confirmed_at` (column grant); trigger: created on first sign-in, later only the avatar |
 | `poker_tables` | manager, invite code, status (seating/playing/ended), settings, `buy_in_mode` (`managers` / `self_add`), end mode | manager + members | insert: any signed-in user as manager; update: manager + co-managers (trigger `guard_table_update`: only the manager ends/reopens, changes `buy_in_mode` or the invite code; nobody changes `manager_id`); delete: manager |
 | `table_members` | users who joined via invite; `is_co_manager` | people in the table | insert: yourself, as a plain member, with a valid invite code of a not-ended table; update (`is_co_manager` only): manager; delete: manager, or co-managers for plain members |
 | `table_players` | seats: `user_id` (account) or null (guest, linkable later), per-table `nickname`/`color` (null = profile values; required for guests), results | people in the table | manager + co-managers; may seat only guests or members |
@@ -131,7 +131,7 @@ Build in steps and stop for the user's confirmation after each step.
 - **Co-manager** (`table_members.is_co_manager`, set only by the manager): everything else the manager does in that table: buy-ins (add/change/delete), seating, per-table names/colors, results, starting the game, amounts.
 - **Buy-in mode** (table setting, chosen when opening, changeable by the manager): `managers` "רק מנהלים" (default): only manager + co-managers write. `self_add` "כל אחד את שלו": additionally each player may **add** buy-ins for **their own seat only**; no changes, no deletes, nothing for others. Corrections stay with the managers.
 - **Change log** (`table_log`): every add/change/remove of buy-ins, seats, names/colors, results, members, co-managers, game start/end and settings, with who and when. Visible to everyone at the table, written only by triggers, so it can't be forged, edited or deleted.
-- **Member/player**: otherwise passive. Reads the live table (seats, buy-ins, pot), the log and their own stats. Other writes: own buy-ins in `self_add` mode, and (from step 7) taking their own free seat once after joining.
+- **Member/player**: otherwise passive. Reads the live table (seats, buy-ins, pot), the log and their own stats. Other writes: own buy-ins in `self_add` mode, and (from step 6) taking their own free seat once after joining.
 - **Stranger**: sees nothing. **anon**: has no grants at all.
 - **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges.
 - Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
