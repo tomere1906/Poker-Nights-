@@ -9,7 +9,7 @@
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
---         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good
+--         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -366,6 +366,18 @@ begin
       (360, 'The game itself isn''t deleted (table + P''s seat)', 'P', $$select count(*) from public.table_players where id in ('a0000000-0000-4000-8000-000000000003', 'f0000000-0000-4000-8000-000000000002') and final_net is not null$$, 'count:2'),
       (361, 'M can''t remove games for P',                    'M', $$update public.hidden_games set permanent = true where user_id = '22222222-2222-4222-8222-222222222222'$$, 'rows:0'),
       (362, 'Only the permanent flag can change',             'P', $$update public.hidden_games set hidden_at = now() where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
+
+      -- ---------------- "עיגול סכומים" (rounding) ----------------
+      -- T2 (Q's) is still open; T1 has ended.
+      (370, 'New tables round to 10 ₪ by default',            'M', $$select count(*) from public.poker_tables where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and rounding = 10$$, 'count:1'),
+      (371, 'The manager (Q) sets rounding to 50 ₪',          'Q', $$update public.poker_tables set rounding = 50 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:1'),
+      (372, 'Only 1 / 5 / 10 / 50 are allowed',               'Q', $$update public.poker_tables set rounding = 7 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'error:23514'),
+      (373, 'A player can''t change the rounding',            'P', $$update public.poker_tables set rounding = 1 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:0'),
+      (374, 'Q makes P co-manager of T2',                     'Q', $$update public.table_members set is_co_manager = true where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and user_id = '22222222-2222-4222-8222-222222222222'$$, 'rows:1'),
+      (375, 'A co-manager can''t change the rounding',        'P', $$update public.poker_tables set rounding = 1 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'deny'),
+      (376, '…but can still change the buy-in amounts',       'P', $$update public.poker_tables set initial_buy_in = 80 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:1'),
+      (377, 'Rounding is locked after the game ended',        'M', $$update public.poker_tables set rounding = 50 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
+      (378, 'Log: Q changed the rounding to 50',              'P', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'rounding_changed' and actor_id = '44444444-4444-4444-8444-444444444444' and (details ->> 'new')::int = 50$$, 'count:1'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 7 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games') and rowsecurity$$, 'count:7'),

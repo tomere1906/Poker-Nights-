@@ -2,10 +2,24 @@
 
 export const MIN_TRANSFER = 20;
 
-// Round every net to whole shekels, then push any imbalance (rounding or a
-// counting mistake) onto the biggest winner so the nets sum to exactly 0.
-export function roundNets(entries) {
-  const nets = entries.map((e) => ({ id: e.id, net: Math.round(e.net) + 0 }));
+// "עיגול סכומים": every result is rounded to a multiple of this (whole shekels).
+export const ROUNDING_UNITS = [1, 5, 10, 50];
+export const DEFAULT_ROUNDING = 10;
+
+export function cleanRounding(unit) {
+  return ROUNDING_UNITS.includes(unit) ? unit : DEFAULT_ROUNDING;
+}
+
+// Nearest multiple of unit; halves round away from zero (fair to winners and losers).
+export function roundTo(value, unit = 1) {
+  return Math.sign(value) * Math.round(Math.abs(value) / unit) * unit + 0;
+}
+
+// Round every net to a multiple of unit, then push any imbalance (rounding or
+// a counting mistake) onto the biggest winner so the nets sum to exactly 0.
+// The imbalance is itself a multiple of unit, so the winner stays round too.
+export function roundNets(entries, unit = 1) {
+  const nets = entries.map((e) => ({ id: e.id, net: roundTo(e.net, unit) }));
   const diff = nets.reduce((sum, e) => sum + e.net, 0);
   if (diff !== 0 && nets.length > 0) {
     let top = nets[0];
@@ -15,8 +29,9 @@ export function roundNets(entries) {
   return nets;
 }
 
-// Plans are compared by: fewest transfers under MIN_TRANSFER, then fewest
-// transfers, then the largest smallest-transfer.
+// The searches below work in rounding units: `min` is MIN_TRANSFER in units.
+// Plans are compared by: fewest transfers under min, then fewest transfers,
+// then the largest smallest-transfer.
 function better(a, b) {
   if (a.small !== b.small) return a.small < b.small;
   if (a.count !== b.count) return a.count < b.count;
@@ -28,7 +43,7 @@ const EMPTY_PLAN = { small: 0, count: 0, min: Infinity, transfers: [] };
 // Exhaustive search over "settle one side of a loser/winner pair" steps.
 // Every tree-shaped settlement (the minimum-transfer kind) is reachable this
 // way, and memoizing on the balance vector keeps it fast for <= 9 players.
-function bestPlan(balances) {
+function bestPlan(balances, min) {
   const memo = new Map();
 
   function solve(bal) {
@@ -47,7 +62,7 @@ function bestPlan(balances) {
         next[j] -= amount;
         const sub = solve(next);
         const plan = {
-          small: sub.small + (amount < MIN_TRANSFER ? 1 : 0),
+          small: sub.small + (amount < min ? 1 : 0),
           count: sub.count + 1,
           min: Math.min(sub.min, amount),
           transfers: [[i, j, amount], ...sub.transfers],
@@ -125,14 +140,14 @@ const MAX_EXTRA_TRANSFERS = 4;
 const MAX_SUPPORTS = 200000;
 
 // Second pass when the minimum-transfer plan still has small transfers:
-// allow a few extra transfers so every transfer can be >= MIN_TRANSFER.
-// Players whose whole result is under MIN_TRANSFER get exactly one
-// (unavoidably small) transfer; every other transfer must be >= MIN_TRANSFER.
-function planWithoutSmall(bal, minCount, currentSmall) {
+// allow a few extra transfers so every transfer can be >= min.
+// Players whose whole result is under min get exactly one
+// (unavoidably small) transfer; every other transfer must be >= min.
+function planWithoutSmall(bal, minCount, currentSmall, min) {
   const n = bal.length;
-  const tiny = bal.map((b) => Math.abs(b) < MIN_TRANSFER);
+  const tiny = bal.map((b) => Math.abs(b) < min);
   const smallOf = (edges) => edges.filter(([i, j]) => tiny[i] || tiny[j]).length;
-  const maxDeg = bal.map((b, v) => (tiny[v] ? 1 : Math.floor(Math.abs(b) / MIN_TRANSFER) + tiny.filter(Boolean).length));
+  const maxDeg = bal.map((b, v) => (tiny[v] ? 1 : Math.floor(Math.abs(b) / min) + tiny.filter(Boolean).length));
 
   const all = [];
   for (let i = 0; i < n; i++) if (bal[i] < 0) for (let j = 0; j < n; j++) if (bal[j] > 0) all.push([i, j]);
@@ -148,7 +163,7 @@ function planWithoutSmall(bal, minCount, currentSmall) {
       if (chosen.length === size) {
         checked++;
         if (deg.some((d) => d === 0) || smallOf(chosen) >= currentSmall) return;
-        if (routeOnEdges(bal, chosen, (i, j) => (tiny[i] || tiny[j] ? 1 : MIN_TRANSFER))) feasible.push(chosen.slice());
+        if (routeOnEdges(bal, chosen, (i, j) => (tiny[i] || tiny[j] ? 1 : min))) feasible.push(chosen.slice());
         return;
       }
       for (let k = start; k <= all.length - (size - chosen.length); k++) {
@@ -171,7 +186,7 @@ function planWithoutSmall(bal, minCount, currentSmall) {
     const fewestSmall = Math.min(...feasible.map(smallOf));
     let best = null;
     for (const edges of feasible.filter((e) => smallOf(e) === fewestSmall)) {
-      let lo = MIN_TRANSFER;
+      let lo = min;
       let hi = Math.max(...bal.map(Math.abs));
       let amounts = null;
       while (lo <= hi) {
@@ -194,24 +209,27 @@ function planWithoutSmall(bal, minCount, currentSmall) {
 }
 
 // entries: [{ id, net }] where net = final chips − total buy-in (may be fractional).
+// unit: "עיגול סכומים" (1 / 5 / 10 / 50). Every net and every transfer is a
+// multiple of it: the plan is searched in units and scaled back.
 // Returns the rounded nets and the transfers [{ from, to, amount }].
-export function settle(entries) {
-  const nets = roundNets(entries);
+export function settle(entries, { unit = 1 } = {}) {
+  const nets = roundNets(entries, unit);
   const active = nets.filter((e) => e.net !== 0);
-  const bal = active.map((e) => e.net);
-  let plan = bestPlan(bal);
+  const bal = active.map((e) => e.net / unit);
+  const min = Math.ceil(MIN_TRANSFER / unit);
+  let plan = bestPlan(bal, min);
   // Each player with a tiny result needs one small transfer; one transfer can
   // cover a tiny loser and a tiny winner together. Below that, nothing to gain.
-  const tinyLosers = bal.filter((b) => b < 0 && -b < MIN_TRANSFER).length;
-  const tinyWinners = bal.filter((b) => b > 0 && b < MIN_TRANSFER).length;
+  const tinyLosers = bal.filter((b) => b < 0 && -b < min).length;
+  const tinyWinners = bal.filter((b) => b > 0 && b < min).length;
   if (plan.small > Math.max(tinyLosers, tinyWinners)) {
-    const alt = planWithoutSmall(bal, plan.count, plan.small);
+    const alt = planWithoutSmall(bal, plan.count, plan.small, min);
     if (alt && alt.small < plan.small) plan = alt;
   }
 
   const loss = new Map(active.map((e) => [e.id, e.net]));
   const transfers = plan.transfers
-    .map(([i, j, amount]) => ({ from: active[i].id, to: active[j].id, amount }))
+    .map(([i, j, amount]) => ({ from: active[i].id, to: active[j].id, amount: amount * unit }))
     // Group by payer (biggest loser first), biggest transfer first.
     .sort((a, b) => loss.get(a.from) - loss.get(b.from) || b.amount - a.amount);
 

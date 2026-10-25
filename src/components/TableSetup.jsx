@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MAX_REBUY_BUTTONS, MIN_REBUY_BUTTONS, cleanSettings } from '../lib/game.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
 import AmountInput from './AmountInput.jsx';
+import RoundingPicker from './RoundingPicker.jsx';
 
 function Card({ title, hint, children }) {
   return (
@@ -25,6 +26,7 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
   const [amounts, setAmounts] = useState(defaults.rebuyAmounts);
   const [buyInMode, setBuyInMode] = useState('managers');
   const [name, setName] = useState('');
+  const [rounding, setRounding] = useState(defaults.rounding);
   const [busy, setBusy] = useState(false);
 
   const distinct = new Set(amounts.filter((a) => a > 0));
@@ -116,6 +118,10 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           )}
         </Card>
 
+        <Card title="עיגול סכומים" hint="התוצאות וההעברות יעוגלו לסכום הזה, כדי שיהיה נוח להעביר">
+          <RoundingPicker value={rounding} onChange={setRounding} />
+        </Card>
+
         {online && (
           <Card title="מי מוסיף כניסות?" hint="אפשר לשנות גם אחר כך, בניהול השולחן">
             <div className="space-y-2">
@@ -148,7 +154,7 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           onClick={async () => {
             setBusy(true);
             try {
-              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts }), buyInMode, cleanTableName(name));
+              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts, rounding }), buyInMode, cleanTableName(name));
             } finally {
               setBusy(false);
             }

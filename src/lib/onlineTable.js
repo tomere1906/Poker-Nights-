@@ -8,7 +8,7 @@ import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
 
 const TABLE_COLUMNS =
-  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, buy_in_mode, end_mode, invite_code, created_at, ended_at';
+  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, buy_in_mode, end_mode, invite_code, created_at, ended_at';
 
 // Same limit as the database check (poker_tables_name_length).
 export const MAX_TABLE_NAME = 30;
@@ -32,6 +32,7 @@ export async function createOnlineTable(settings, buyInMode, name) {
         name: cleanTableName(name),
         initial_buy_in: settings.initialBuyIn,
         rebuy_amounts: settings.rebuyAmounts,
+        rounding: settings.rounding,
         buy_in_mode: buyInMode,
       })
       .select('id')
@@ -169,7 +170,7 @@ export function toView(raw, userId) {
     started: table.status !== 'seating',
     endMode,
     finals: finalsFor(players, endMode),
-    settings: cleanSettings({ initialBuyIn: table.initial_buy_in, rebuyAmounts: table.rebuy_amounts }),
+    settings: cleanSettings({ initialBuyIn: table.initial_buy_in, rebuyAmounts: table.rebuy_amounts, rounding: table.rounding }),
     buyInMode: table.buy_in_mode,
     inviteCode: table.invite_code,
     players,
@@ -290,6 +291,11 @@ function makeActions(view) {
 
     async setName(name) {
       must(await supabase.from('poker_tables').update({ name: cleanTableName(name) }).eq('id', tableId));
+    },
+
+    // "עיגול סכומים" (the database lets only the manager change it).
+    async setRounding(unit) {
+      must(await supabase.from('poker_tables').update({ rounding: unit }).eq('id', tableId));
     },
 
     async setEndMode(mode) {

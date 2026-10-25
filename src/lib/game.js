@@ -1,3 +1,5 @@
+import { DEFAULT_ROUNDING, cleanRounding } from './settlement.js';
+
 // Pure game-state logic. The UI dispatches actions; nothing here touches the DOM.
 // Before the game starts the table has MAX_PLAYERS fixed seats (gaps allowed).
 // Once it starts, seats are compacted to 0..n-1 so the table never shows gaps.
@@ -8,7 +10,8 @@ export const MIN_REBUY_BUTTONS = 2;
 export const MAX_REBUY_BUTTONS = 4;
 
 // Table settings chosen by the table manager when opening a table.
-export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200] };
+// rounding: "עיגול סכומים", results are rounded to a multiple of it (1 / 5 / 10 / 50 ₪).
+export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200], rounding: DEFAULT_ROUNDING };
 
 // The whole state is one table. With a backend later this maps onto a
 // `tables` row (settings, status) plus `players` and `buy_ins` rows.
@@ -36,7 +39,7 @@ export function cleanSettings(settings) {
   const amounts = [...new Set((settings?.rebuyAmounts ?? []).filter(positiveInt))].sort((a, b) => a - b);
   const rebuyAmounts =
     amounts.length >= MIN_REBUY_BUTTONS ? amounts.slice(0, MAX_REBUY_BUTTONS) : DEFAULT_SETTINGS.rebuyAmounts;
-  return { initialBuyIn, rebuyAmounts };
+  return { initialBuyIn, rebuyAmounts, rounding: cleanRounding(settings?.rounding) };
 }
 
 // How a player left mid-game. The same labels and icons as the quick results on

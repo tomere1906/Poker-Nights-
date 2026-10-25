@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TRANSFER, roundNets, settle } from './settlement.js';
+import { MIN_TRANSFER, ROUNDING_UNITS, roundNets, roundTo, settle } from './settlement.js';
 
 const entries = (obj) => Object.entries(obj).map(([id, net]) => ({ id, net }));
 
@@ -101,5 +101,63 @@ describe('settle', () => {
       expect(result.transfers.length).toBeLessThanOrEqual(8);
     }
     expect(Date.now() - start).toBeLessThan(5000);
+  });
+});
+
+describe('rounding ("עיגול סכומים")', () => {
+  const multipleOf = (unit) => (n) => n % unit === 0;
+
+  it('rounds to the unit; halves go away from zero', () => {
+    expect([155, 45, -155, -45, 152.5, 4].map((n) => roundTo(n, 10))).toEqual([160, 50, -160, -50, 150, 0]);
+    expect([155, 45, 74, 76].map((n) => roundTo(n, 50))).toEqual([150, 50, 50, 100]);
+    expect([152.5, -0.5].map((n) => roundTo(n, 1))).toEqual([153, -1]);
+  });
+
+  it('turns +155 / +45 into round amounts (the example)', () => {
+    const result = settle(entries({ a: 155, b: 45, c: -200 }), { unit: 10 });
+    // 160 + 50 − 200 = +10 too much: the biggest winner absorbs it.
+    expect(result.nets).toEqual([
+      { id: 'a', net: 150 },
+      { id: 'b', net: 50 },
+      { id: 'c', net: -200 },
+    ]);
+    expect(result.transfers).toEqual([
+      { from: 'c', to: 'a', amount: 150 },
+      { from: 'c', to: 'b', amount: 50 },
+    ]);
+  });
+
+  it('keeps every net and every transfer a multiple of the unit, balanced and >= 20 ₪', () => {
+    const reference = entries({ Ido: 130, Or: -500, Fouad: -65, Ben: -70, Shaked: 152.5, Asaf: -175, As: 200, Yuri: 325 });
+    for (const unit of ROUNDING_UNITS) {
+      const result = settle(reference, { unit });
+      expectBalanced(result);
+      expect(result.nets.reduce((s, e) => s + e.net, 0)).toBe(0);
+      expect(result.nets.every((e) => multipleOf(unit)(e.net))).toBe(true);
+      expect(result.transfers.every((t) => multipleOf(unit)(t.amount))).toBe(true);
+      expect(result.transfers.every((t) => t.amount >= MIN_TRANSFER)).toBe(true);
+      expect(result.transfers.length).toBeLessThanOrEqual(7);
+    }
+  });
+
+  it('stays round on random games too', () => {
+    let seed = 11;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (const unit of ROUNDING_UNITS) {
+      for (let round = 0; round < 10; round++) {
+        const raw = Array.from({ length: 8 }, (_, i) => ({ id: `p${i}`, net: Math.round((rand() - 0.5) * 600) }));
+        // Make the raw results add up to 0, like a real (correctly counted) game.
+        raw[0].net -= raw.reduce((s, e) => s + e.net, 0);
+        const result = settle(raw, { unit });
+        expectBalanced(result);
+        expect(result.nets.every((e) => multipleOf(unit)(e.net))).toBe(true);
+        expect(result.transfers.every((t) => multipleOf(unit)(t.amount))).toBe(true);
+      }
+    }
+  });
+
+  it('with unit 1 behaves exactly as before', () => {
+    const game = entries({ Ido: 130, Or: -500, Fouad: -65, Ben: -70, Shaked: 152.5, Asaf: -175, As: 200, Yuri: 325 });
+    expect(settle(game, { unit: 1 })).toEqual(settle(game));
   });
 });

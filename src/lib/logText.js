@@ -56,6 +56,8 @@ export function describeLog(entry) {
       return `${who} החזיר את השולחן להושבה`;
     case 'mode_changed':
       return d.mode === 'self_add' ? `${who} שינה: כל אחד מוסיף לעצמו כניסות` : `${who} שינה: רק מנהלים מוסיפים כניסות`;
+    case 'rounding_changed':
+      return d.new === 1 ? `${who} שינה: בלי עיגול (לשקל)` : `${who} שינה את עיגול הסכומים ל־${formatShekel(d.new)}`;
     case 'settings_changed':
       return `${who} עדכן את סכומי הכניסה`;
     default:

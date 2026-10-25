@@ -16,14 +16,18 @@ describe('table settings', () => {
     s = gameReducer(s, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [60, 30, 100] } });
     expect(s.tableOpen).toBe(true);
     expect(s.players).toEqual([]);
-    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100] });
+    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100], rounding: 10 });
   });
 
   it('cleans settings: 2-4 distinct positive buttons, else defaults', () => {
     expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [100, 0, 100, 50] })).toEqual({
       initialBuyIn: 40,
       rebuyAmounts: [50, 100],
+      rounding: 10,
     });
+    // Rounding: 1 / 5 / 10 / 50 ₪, default 10 (also for saves from before the setting).
+    expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [50, 100], rounding: 50 }).rounding).toBe(50);
+    expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [50, 100], rounding: 7 }).rounding).toBe(10);
     expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [10, 20, 30, 40, 50] }).rebuyAmounts).toEqual([10, 20, 30, 40]);
     expect(cleanSettings({ initialBuyIn: 0, rebuyAmounts: [70] })).toEqual(DEFAULT_SETTINGS);
     expect(cleanSettings(undefined)).toEqual(DEFAULT_SETTINGS);

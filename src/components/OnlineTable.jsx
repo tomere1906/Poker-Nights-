@@ -157,6 +157,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
       <Settlement
         players={view.players}
         entries={entries}
+        rounding={view.settings.rounding}
         tableName={view.name}
         date={view.endedAt}
         notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
@@ -179,14 +180,14 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
     );
   } else if (step === 'settle' && view.canManage) {
     body = (
-      <Settlement players={view.players} entries={entries} tableName={view.name} onBack={() => setStep('end')}>
+      <Settlement players={view.players} entries={entries} rounding={view.settings.rounding} tableName={view.name} onBack={() => setStep('end')}>
         <CloseTableButton
           isManager={view.isManager}
           missing={missing}
           onClose={async () => {
             try {
               // The same whole-shekel results everyone will see; the database checks they add up to 0.
-              await actions.endGame(settle(entries).nets);
+              await actions.endGame(settle(entries, { unit: view.settings.rounding }).nets);
               showToast('השולחן נסגר – התוצאות נשמרו 🎉');
             } catch (e) {
               fail(e);

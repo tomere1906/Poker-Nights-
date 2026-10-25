@@ -3,6 +3,7 @@ import { settle } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
+import { roundingLabel } from './RoundingPicker.jsx';
 
 // "משחק חדש" for the local table: wipes the game after a second tap.
 export function NewGameButton({ onNewGame }) {
@@ -20,10 +21,19 @@ export function NewGameButton({ onNewGame }) {
   );
 }
 
-// Who pays whom. entries: [{ id, net }] (any numbers; settle() rounds and
-// balances them). date: when the game ended (ms; default now).
+// Who pays whom. entries: [{ id, net }] (any numbers; settle() rounds them to
+// `rounding` and balances them). date: when the game ended (ms; default now).
 // children: extra buttons under "share" (new game, close table…).
-export default function Settlement({ players, entries, tableName = null, date = null, notice = null, onBack, children }) {
+export default function Settlement({
+  players,
+  entries,
+  rounding = 1,
+  tableName = null,
+  date = null,
+  notice = null,
+  onBack,
+  children,
+}) {
   const [shareState, setShareState] = useState(null); // null | 'working' | 'downloaded' | 'error'
   const [file, setFile] = useState(null);
   const [now] = useState(() => Date.now());
@@ -31,25 +41,26 @@ export default function Settlement({ players, entries, tableName = null, date = 
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
-  const { nets, transfers } = useMemo(() => settle(entries), [entries]);
+  const { nets, transfers } = useMemo(() => settle(entries, { unit: rounding }), [entries, rounding]);
+  const details = [tableName, formatDate(when), roundingLabel(rounding)].filter(Boolean).join(' · ');
 
   // Prepare the image up front: iPhone Safari opens the share sheet only right
   // after a tap, so the tap itself must not wait for drawing.
   useEffect(() => {
     let active = true;
     setFile(null);
-    renderSettlementPng({ tableName, date: when, transfers, nets, players: byId })
+    renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId })
       .then((f) => active && setFile(f))
       .catch(() => active && setFile(null));
     return () => {
       active = false;
     };
-  }, [tableName, when, transfers, nets, byId]);
+  }, [details, when, transfers, nets, byId]);
 
   async function share() {
     setShareState('working');
     try {
-      const image = file ?? (await renderSettlementPng({ tableName, date: when, transfers, nets, players: byId }));
+      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId }));
       const result = await shareOrDownload(image);
       setShareState(result === 'downloaded' ? 'downloaded' : null);
       if (result === 'downloaded') setTimeout(() => setShareState(null), 2500);
@@ -74,7 +85,7 @@ export default function Settlement({ players, entries, tableName = null, date = 
         )}
         <div className="min-w-0">
           <h2 className="text-2xl font-extrabold">מי מעביר למי 💸</h2>
-          <p className="truncate text-sm text-slate-400">{[tableName, formatDate(when)].filter(Boolean).join(' · ')}</p>
+          <p className="truncate text-sm text-slate-400">{details}</p>
         </div>
       </div>
 

@@ -36,6 +36,11 @@ describe('describeLog: exits and table names', () => {
     expect(say('player_back', { name: 'עידו' }, 'תומר')).toBe('תומר החזיר את עידו למשחק');
   });
 
+  it('describes rounding changes', () => {
+    expect(say('rounding_changed', { old: 10, new: 50 }, 'תומר')).toBe('תומר שינה את עיגול הסכומים ל־50 ₪');
+    expect(say('rounding_changed', { old: 10, new: 1 }, 'תומר')).toBe('תומר שינה: בלי עיגול (לשקל)');
+  });
+
   it('describes table renames', () => {
     expect(say('table_renamed', { old: null, new: 'שישי אצל אסף' }, 'תומר')).toBe('תומר קרא לשולחן ״שישי אצל אסף״');
     expect(say('table_renamed', { old: 'שישי', new: null }, 'תומר')).toBe('תומר הסיר את שם השולחן');

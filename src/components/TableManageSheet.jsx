@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import BottomSheet from './BottomSheet.jsx';
 import Avatar from './Avatar.jsx';
+import RoundingPicker from './RoundingPicker.jsx';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
 
 const MODES = [
@@ -8,7 +9,7 @@ const MODES = [
   { id: 'self_add', title: 'כל אחד את שלו', hint: 'כל שחקן יכול גם להוסיף כניסות לעצמו. תיקונים רק אצל המנהלים' },
 ];
 
-// Table management: name, buy-in mode and co-managers (manager only), delete table.
+// Table management: name, rounding, buy-in mode and co-managers (manager only), delete table.
 // Co-managers and players see the same information, read-only.
 export default function TableManageSheet({ view, actions, onDeleted, onClose, onError }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -55,6 +56,16 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
           ) : (
             <p className="rounded-2xl bg-slate-800/70 p-3 font-bold">{view.name ?? 'בלי שם'}</p>
           )}
+        </section>
+
+        <section>
+          <p className="mb-2 text-sm text-slate-400">עיגול סכומים</p>
+          <RoundingPicker
+            value={view.settings.rounding}
+            disabled={!isManager || view.ended}
+            onChange={(unit) => run(() => actions.setRounding(unit))}
+          />
+          {!isManager && <p className="mt-2 text-xs text-slate-500">רק מנהל השולחן משנה את זה</p>}
         </section>
 
         <section>

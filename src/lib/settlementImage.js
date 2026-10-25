@@ -2,7 +2,7 @@
 // as the card in the app) and shares it as a PNG. Drawn directly instead of
 // capturing the DOM: DOM-to-image libraries are unreliable on iPhone Safari
 // (web fonts, emoji), while canvas text handles Hebrew RTL and Rubik natively.
-import { formatDate, formatShekel } from './format.js';
+import { formatShekel } from './format.js';
 import { initials } from './game.js';
 import { paletteColor } from './colors.js';
 
@@ -210,13 +210,13 @@ export function drawSettlement(data, scale = 3) {
 }
 
 // The PNG, after the app font has loaded (otherwise the canvas would use a fallback font).
-export async function renderSettlementPng({ tableName, date, transfers, nets, players }) {
+// subtitle: the line under the title, as on the screen (table name · date · rounding).
+export async function renderSettlementPng({ subtitle, date, transfers, nets, players }) {
   try {
     await Promise.all([document.fonts.load(`800 26px Rubik`), document.fonts.load(`700 16px Rubik`), document.fonts.load(`400 15px Rubik`)]);
   } catch {
     // Offline or blocked: draw with the fallback font.
   }
-  const subtitle = [tableName, formatDate(date)].filter(Boolean).join(' · ');
   const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, players });
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('לא הצלחנו ליצור את התמונה');
