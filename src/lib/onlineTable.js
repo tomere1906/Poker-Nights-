@@ -1,7 +1,7 @@
 // Online tables: load a table from Supabase, shape it like the local game
 // state (so the same UI renders it), and write changes back. RLS decides what
 // each user may actually do; the UI only hides what would be refused anyway.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './supabase.js';
 import { MAX_PLAYERS, cleanSettings, firstFreeSeat } from './game.js';
 import { firstFreeColor, suggestedColor } from './colors.js';
@@ -236,23 +236,72 @@ function makeActions(view) {
   };
 }
 
-// { view, error, loading, actions, refresh }. Every action reloads the table afterwards.
+// PGRST116 = no row: the table was deleted, or this user isn't in it (any more).
+export function loadErrorText(e) {
+  return e?.code === 'PGRST116' ? 'השולחן לא זמין: הוא נמחק, או שאינך חבר בו.' : e?.message ?? String(e);
+}
+
+// { view, error, loading, live, actions, refresh }. Every action reloads the table
+// afterwards, and so does every change anyone else makes (Realtime, below).
 export function useOnlineTable(tableId, userId) {
   const [raw, setRaw] = useState(null);
   const [error, setError] = useState(null);
+  const [live, setLive] = useState(false);
+  const latest = useRef(0);
 
   const refresh = useCallback(async () => {
+    // Loads can overlap (my action + its Realtime echo): only the newest one wins.
+    const request = ++latest.current;
     try {
-      setRaw(await loadTable(tableId));
+      const data = await loadTable(tableId);
+      if (request !== latest.current) return;
+      setRaw(data);
       setError(null);
     } catch (e) {
-      setError(e.message);
+      if (request !== latest.current) return;
+      // Gone (deleted / removed from it): stop showing it. A network hiccup keeps the last view.
+      if (e?.code === 'PGRST116') setRaw(null);
+      setError(loadErrorText(e));
     }
   }, [tableId]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Live updates. Every change at a table (buy-ins, seats, names, members, start/end,
+  // settings) writes a log row in the same transaction, so one subscription to new
+  // log rows of this table covers everything. Realtime checks RLS for each
+  // subscriber, so only people in the table get the rows. The event is only a
+  // "something changed" ping: the table is reloaded through the normal RLS reads.
+  useEffect(() => {
+    let timer;
+    // One action can write several rows (e.g. starting the game moves seats): reload once.
+    const reloadSoon = () => {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 250);
+    };
+    const channel = supabase
+      .channel(`table-log:${tableId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'table_log', filter: `table_id=eq.${tableId}` }, reloadSoon)
+      .subscribe((status) => {
+        setLive(status === 'SUBSCRIBED');
+        // (Re)connected: catch up on anything missed meanwhile.
+        if (status === 'SUBSCRIBED') reloadSoon();
+      });
+    // Phones drop the connection in the background: catch up on return.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') reloadSoon();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', reloadSoon);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', reloadSoon);
+      supabase.removeChannel(channel);
+    };
+  }, [tableId, refresh]);
 
   const view = useMemo(() => (raw ? toView(raw, userId) : null), [raw, userId]);
 
@@ -273,5 +322,5 @@ export function useOnlineTable(tableId, userId) {
     );
   }, [view, refresh]);
 
-  return { view, error, loading: !raw && !error, actions, refresh };
+  return { view, error, loading: !raw && !error, live, actions, refresh };
 }

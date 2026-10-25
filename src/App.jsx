@@ -4,6 +4,7 @@ import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.
 import { useAuth } from './lib/auth.js';
 import { createOnlineTable } from './lib/onlineTable.js';
 import { captureInviteFromUrl, pendingInvite } from './lib/invite.js';
+import { initialScreen, rememberScreen } from './lib/screen.js';
 import TableScreen from './components/TableScreen.jsx';
 import OnlineTable from './components/OnlineTable.jsx';
 import EndGame from './components/EndGame.jsx';
@@ -22,11 +23,13 @@ const THEME_COLOR = '#0b1120';
 
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, initialState, (s) => normalizeState(loadState(s)));
-  // The app always opens on the start screen. The local game lives in `state`;
-  // online tables live in Supabase.
+  // The app opens on the start screen, unless a table was open (refresh or
+  // reopening the home-screen app returns to it). The local game lives in
+  // `state`; online tables live in Supabase.
   // 'home' | 'profile' | 'setup-local' | 'setup-online' | 'game' (local) | 'online'
-  const [screen, setScreen] = useState('home');
-  const [onlineTableId, setOnlineTableId] = useState(null);
+  const [start] = useState(() => initialScreen(state.tableOpen));
+  const [screen, setScreen] = useState(start.screen);
+  const [onlineTableId, setOnlineTableId] = useState(start.tableId);
   // An invite link opened now (or before a Google sign-in redirect).
   const [invite, setInvite] = useState(() => {
     captureInviteFromUrl();
@@ -40,6 +43,13 @@ export default function App() {
   const toastTimer = useRef();
 
   useEffect(() => saveState(state), [state]);
+
+  useEffect(() => rememberScreen(screen, onlineTableId), [screen, onlineTableId]);
+
+  // Back at an online table after a refresh, but signed out: go home.
+  useEffect(() => {
+    if (screen === 'online' && !auth.loading && !auth.session) setScreen('home');
+  }, [screen, auth.loading, auth.session]);
 
   // Every screen uses the same dark background; re-assert the theme color on
   // each screen change so the browser toolbar never keeps a stale tint.
@@ -128,6 +138,10 @@ export default function App() {
             showToast('השולחן נפתח – הושיבו שחקנים 🎉');
           }}
         />
+      )}
+
+      {!needsName && !invite && screen === 'online' && auth.loading && (
+        <p className="flex flex-1 items-center justify-center text-slate-400">טוען את השולחן…</p>
       )}
 
       {!needsName && !invite && screen === 'online' && onlineTableId && auth.session && (

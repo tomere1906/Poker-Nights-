@@ -40,7 +40,7 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - Code, comments, file names and commit messages stay in English.
 
 ## Features
-1. **Start screen**: the app always opens here, with two clearly separate sections:
+1. **Start screen**: the app opens here, unless a table was open: a refresh or reopening the home-screen app returns to that table (`src/lib/screen.js`: `?table=<id>` in the URL + `poker-nights-screen` in localStorage). It has two clearly separate sections:
    - "🌐 שולחן אונליין עם חברים" (requires Google sign-in): back to the latest open online table, or open a new one.
    - "📱 שולחן מקומי (בלי התחברות)": the phone-only table, exactly as before (stored in localStorage).
    Tapping the logo in a table returns here.
@@ -86,10 +86,10 @@ Build in steps and stop for the user's confirmation after each step.
    4. **Display names + colors**: pick a name (prefilled with the Google first name) and a color on first login; profile screen to change both; per-table nickname and color override set by the manager; guests get a manager-chosen color. Migration + RLS + tests.
    - **Decided before step 5:** co-managers + a per-table buy-in mode + a change log (see Roles). Built in step 5's first migration.
    5. Create a table online + manager controls: settings (incl. buy-in mode), seating flow, buy-ins/undo, co-managers, change log view, all in Supabase (done).
-   6. **Invites** (in progress): "הזמן חברים" (Web Share, wa.me fallback, QR); opening the link → sign-in → auto-join → **the player picks their own free seat**. The manager can still move anyone and seat guests. Tested with Google Cloud test users until step 10.
+   6. **Invites** (done): "הזמן חברים" (Web Share, wa.me fallback, QR); opening the link → sign-in → auto-join → **the player picks their own free seat**. The manager can still move anyone and seat guests. Tested with Google Cloud test users until step 10.
       - RLS + tests: a member may insert only their own seat (`user_id = auth.uid()`), only once per table, only in a free seat, only before the game ends, with no nickname/color override and no results. They can't move others or themselves afterwards (only managers move). Seats are unique per table (`unique (table_id, seat)`, deferrable; managers swap two players atomically via `public.swap_seats`, a SECURITY INVOKER function so RLS still applies).
       - Also: palette grows to 12 colors (indexes 0-11); new players get a color not yet taken at the table.
-   7. Live table for players: Realtime, read-only.
+   7. **Live table** (in progress): every change writes a `table_log` row in the same transaction, so the app subscribes (Realtime `postgres_changes`, RLS-checked per subscriber) only to new log rows of the open table and then reloads through the normal RLS reads. Only `table_log` is in the `supabase_realtime` publication (Realtime cannot apply RLS to DELETE events). Also reloads when the phone returns to the app or comes back online. Header shows "אונליין · חי" while connected.
    8. End game online: results entry (+/−, מאוזן, הפסיד הכל), whole-shekel settlement, close the table, store `final_net`.
    9. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
    10. **Google branding + publishing**, right before inviting all friends: simple Hebrew privacy policy and terms pages on the site; guide the user through Google Auth Platform → Branding (name, support email, home page, privacy/terms links, authorized domain) and publishing the app (basic scopes only: openid, email, profile), so the consent screen looks trustworthy and friends can sign in.
@@ -136,7 +136,7 @@ Build in steps and stop for the user's confirmation after each step.
 - **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges.
 - Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
 - Every new table: enable RLS, add policies, add explicit grants (never to `anon` unless truly public), index foreign keys, and extend `supabase/tests/rls_test.sql`.
-- `supabase/tests/rls_test.sql` must pass (124+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
+- `supabase/tests/rls_test.sql` must pass (151+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
 
 Design rules so phase 1 code carries over:
 - The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.

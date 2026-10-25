@@ -11,7 +11,7 @@ const HEADER_BUTTON = 'rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-
 // An online table. The manager/co-managers run it; players watch it (and in
 // "כל אחד את שלו" mode add buy-ins for themselves).
 export default function OnlineTable({ tableId, userId, onHome, showToast }) {
-  const { view, error, loading, actions } = useOnlineTable(tableId, userId);
+  const { view, error, loading, live, actions } = useOnlineTable(tableId, userId);
   const [panel, setPanel] = useState(null); // null | 'log' | 'manage'
 
   const header = (
@@ -20,7 +20,13 @@ export default function OnlineTable({ tableId, userId, onHome, showToast }) {
         <CardsIcon className="h-9 w-9 drop-shadow" />
         <h1 className="sr-only">Poker Nights</h1>
       </button>
-      <span className="rounded-full bg-sky-400/15 px-2 py-0.5 text-xs font-bold text-sky-300">🌐 אונליין</span>
+      <span
+        className="flex items-center gap-1.5 rounded-full bg-sky-400/15 px-2 py-0.5 text-xs font-bold text-sky-300"
+        title={live ? 'מתעדכן בזמן אמת' : 'מתחבר לעדכונים…'}
+      >
+        <span className={`h-2 w-2 rounded-full ${live ? 'animate-pulse bg-emerald-400' : 'bg-slate-500'}`} aria-hidden />
+        {live ? 'אונליין · חי' : 'אונליין'}
+      </span>
       {view && (
         <div className="ms-auto flex gap-2">
           {view.canManage && view.status !== 'ended' && (
@@ -48,7 +54,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast }) {
     );
   }
 
-  if (error || !view) {
+  if (!view) {
     return (
       <>
         {header}
