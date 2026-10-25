@@ -4,13 +4,13 @@ import { formatShekel } from '../lib/format.js';
 import { CardsIcon, ChipIcon } from './Icons.jsx';
 import AccountBar from './AccountBar.jsx';
 
-export default function HomeScreen({ state, auth, onContinue, onNewTable }) {
+export default function HomeScreen({ state, auth, onOpenProfile, onContinue, onNewTable }) {
   const [confirmNew, setConfirmNew] = useState(false);
   const { tableOpen, players } = state;
 
   return (
     <div className="flex flex-1 flex-col">
-      <AccountBar auth={auth} />
+      <AccountBar auth={auth} onOpenProfile={onOpenProfile} />
       <div className="flex flex-1 flex-col items-center justify-center text-center">
         <div className="relative mb-6">
           <div className="absolute inset-0 -z-10 rounded-full bg-emerald-500/20 blur-3xl" />

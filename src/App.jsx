@@ -12,6 +12,8 @@ import Confetti from './components/Confetti.jsx';
 import Toast from './components/Toast.jsx';
 import HomeScreen from './components/HomeScreen.jsx';
 import TableSetup from './components/TableSetup.jsx';
+import NameSetup from './components/NameSetup.jsx';
+import ProfileScreen from './components/ProfileScreen.jsx';
 import { CardsIcon } from './components/Icons.jsx';
 
 // Matches the page background (html/body in index.css and the theme-color meta).
@@ -22,6 +24,8 @@ export default function App() {
   // The app always opens on the start screen; the game itself is in `state`.
   const [screen, setScreen] = useState('home'); // 'home' | 'setup' | 'game'
   const auth = useAuth();
+  // First sign-in: confirm a display name (and pick a color) before anything else.
+  const needsName = Boolean(auth.session && auth.profile && !auth.profile.name_confirmed_at);
   const [sheet, setSheet] = useState(null); // { type: 'add', position } | { type: 'player', id }
   const [placing, setPlacing] = useState(false);
   const [confetti, setConfetti] = useState(0);
@@ -59,11 +63,31 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
-      {screen === 'home' && (
-        <HomeScreen state={state} auth={auth} onContinue={() => setScreen('game')} onNewTable={() => setScreen('setup')} />
+      {needsName && <NameSetup profile={auth.profile} onSaved={auth.setProfile} />}
+
+      {!needsName && screen === 'home' && (
+        <HomeScreen
+          state={state}
+          auth={auth}
+          onOpenProfile={() => setScreen('profile')}
+          onContinue={() => setScreen('game')}
+          onNewTable={() => setScreen('setup')}
+        />
       )}
 
-      {screen === 'setup' && (
+      {!needsName && screen === 'profile' && auth.profile && (
+        <ProfileScreen
+          profile={auth.profile}
+          onBack={() => setScreen('home')}
+          onSaved={(profile) => {
+            auth.setProfile(profile);
+            setScreen('home');
+            showToast('הפרופיל נשמר ✓');
+          }}
+        />
+      )}
+
+      {!needsName && screen === 'setup' && (
         <TableSetup
           defaults={cleanSettings(loadSettings(DEFAULT_SETTINGS))}
           onBack={() => setScreen('home')}
@@ -76,7 +100,7 @@ export default function App() {
         />
       )}
 
-      {screen === 'game' && (
+      {!needsName && screen === 'game' && (
         <header className="mb-2 flex items-center gap-2">
           <button
             type="button"
@@ -90,7 +114,7 @@ export default function App() {
         </header>
       )}
 
-      {screen === 'game' && view === 'table' && (
+      {!needsName && screen === 'game' && view === 'table' && (
         <>
           <main className="flex flex-1 items-center">
             <PokerTable
@@ -163,7 +187,7 @@ export default function App() {
         </>
       )}
 
-      {screen === 'game' && view === 'end' && (
+      {!needsName && screen === 'game' && view === 'end' && (
         <EndGame
           state={state}
           onMode={(mode) => dispatch({ type: 'setEndMode', mode })}
@@ -176,7 +200,7 @@ export default function App() {
         />
       )}
 
-      {screen === 'game' && view === 'settle' && (
+      {!needsName && screen === 'game' && view === 'settle' && (
         <Settlement
           state={state}
           onBack={() => setView('end')}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from './supabase.js';
 
 // Google sends the user back to the app's own address (live site, localhost or
@@ -43,23 +43,37 @@ function cleanAuthParams() {
   window.history.replaceState(null, '', url.pathname + url.search);
 }
 
+const PROFILE_COLUMNS = 'id, display_name, color, avatar_url, name_confirmed_at';
+
 async function fetchProfile(user) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, display_name, avatar_url')
-    .eq('id', user.id)
-    .maybeSingle();
+  const { data } = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', user.id).maybeSingle();
   // Fall back to the sign-in data if the profile row isn't there yet.
   return (
     data ?? {
       id: user.id,
-      display_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? '',
+      display_name: (user.user_metadata?.full_name ?? user.user_metadata?.name ?? '').split(' ')[0],
+      color: null,
       avatar_url: user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null,
+      name_confirmed_at: null,
     }
   );
 }
 
-// { loading, session, profile, error }. With no Supabase config: signed out forever.
+export const MAX_NAME_LENGTH = 30;
+
+// Save the user's own name + color (RLS: only their own row; only these columns).
+export async function saveProfile(userId, { displayName, color }) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ display_name: displayName.trim(), color, name_confirmed_at: new Date().toISOString() })
+    .eq('id', userId)
+    .select(PROFILE_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// { loading, session, profile, error, setProfile }. With no Supabase config: signed out forever.
 export function useAuth() {
   const [auth, setAuth] = useState({ loading: Boolean(supabase), session: null, profile: null, error: readAuthError() });
 
@@ -90,5 +104,6 @@ export function useAuth() {
     };
   }, []);
 
-  return auth;
+  const setProfile = useCallback((profile) => setAuth((a) => ({ ...a, profile })), []);
+  return { ...auth, setProfile };
 }

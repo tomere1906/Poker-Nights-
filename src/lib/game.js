@@ -3,7 +3,7 @@
 // Once it starts, seats are compacted to 0..n-1 so the table never shows gaps.
 
 export const MAX_PLAYERS = 9;
-export const AVATAR_COLORS = 10;
+export const AVATAR_COLORS = 8; // = PALETTE.length in src/lib/colors.js
 export const MIN_REBUY_BUTTONS = 2;
 export const MAX_REBUY_BUTTONS = 4;
 

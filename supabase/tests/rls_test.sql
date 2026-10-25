@@ -7,6 +7,7 @@
 --
 -- Users:  M = manager of T1 · P = player in T1 and T2 · S = stranger · Q = manager of T2
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
+-- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
 -- Expectations:
 --   ok          must succeed
@@ -41,14 +42,14 @@ begin
     select * from (values
       -- ---------------- setup through the real rules (all must pass) ----------------
       (1,  'M opens table T1',                         'M', $$insert into public.poker_tables (id, invite_code) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'code-t1')$$, 'ok'),
-      (2,  'M seats himself in T1',                    'M', $$insert into public.table_players (id, table_id, user_id, name, seat) values ('a0000000-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'מנהל', 0)$$, 'ok'),
-      (3,  'M seats a guest (name only) in T1',        'M', $$insert into public.table_players (id, table_id, name, seat) values ('a0000000-0000-4000-8000-000000000002', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'אורח', 1)$$, 'ok'),
+      (2,  'M seats himself in T1',                    'M', $$insert into public.table_players (id, table_id, user_id, nickname, seat) values ('a0000000-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'מנהל', 0)$$, 'ok'),
+      (3,  'M seats a guest (name only) in T1',        'M', $$insert into public.table_players (id, table_id, nickname, color, seat) values ('a0000000-0000-4000-8000-000000000002', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'אורח', 3, 1)$$, 'ok'),
       (4,  'M adds buy-ins in T1',                     'M', $$insert into public.buy_ins (table_id, player_id, amount) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a0000000-0000-4000-8000-000000000001', 50), ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a0000000-0000-4000-8000-000000000002', 50)$$, 'ok'),
       (5,  'P joins T1 with the invite code',          'P', $$insert into public.table_members (table_id, invite_code) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'code-t1')$$, 'ok'),
-      (6,  'M seats P (a member) in T1',               'M', $$insert into public.table_players (id, table_id, user_id, name, seat) values ('a0000000-0000-4000-8000-000000000003', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 'שחקן', 2)$$, 'ok'),
+      (6,  'M seats P (a member) in T1',               'M', $$insert into public.table_players (id, table_id, user_id, nickname, seat) values ('a0000000-0000-4000-8000-000000000003', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 'שחקן', 2)$$, 'ok'),
       (7,  'Q opens table T2',                         'Q', $$insert into public.poker_tables (id, invite_code) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'code-t2')$$, 'ok'),
       (8,  'P joins T2',                               'P', $$insert into public.table_members (table_id, invite_code) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'code-t2')$$, 'ok'),
-      (9,  'Q seats Q and P in T2',                    'Q', $$insert into public.table_players (id, table_id, user_id, name, seat) values ('b0000000-0000-4000-8000-000000000001', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '44444444-4444-4444-8444-444444444444', 'מנהל 2', 0), ('b0000000-0000-4000-8000-000000000002', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '22222222-2222-4222-8222-222222222222', 'שחקן', 1)$$, 'ok'),
+      (9,  'Q seats Q and P in T2',                    'Q', $$insert into public.table_players (id, table_id, user_id, nickname, seat) values ('b0000000-0000-4000-8000-000000000001', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '44444444-4444-4444-8444-444444444444', 'מנהל 2', 0), ('b0000000-0000-4000-8000-000000000002', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '22222222-2222-4222-8222-222222222222', 'שחקן', 1)$$, 'ok'),
       (10, 'Q adds a buy-in for P in T2',              'Q', $$insert into public.buy_ins (table_id, player_id, amount) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 100)$$, 'ok'),
       (11, 'M enters P''s result in T1',               'M', $$update public.table_players set final_value = -50, final_net = -50 where id = 'a0000000-0000-4000-8000-000000000003'$$, 'rows:1'),
       (12, 'Q enters P''s result in T2',               'Q', $$update public.table_players set final_value = 30, final_net = 30 where id = 'b0000000-0000-4000-8000-000000000002'$$, 'rows:1'),
@@ -59,19 +60,19 @@ begin
       (22, 'P sees all buy-ins in T1',                 'P', $$select count(*) from public.buy_ins where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'count:2'),
       (23, 'P sees own results in both games',         'P', $$select count(*) from public.table_players where user_id = '22222222-2222-4222-8222-222222222222'$$, 'count:2'),
       (24, 'P sees the manager''s profile (tablemate)', 'P', $$select count(*) from public.profiles where id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
-      (25, 'Profile name comes from Google data',      'M', $$select count(*) from public.profiles where id = '11111111-1111-4111-8111-111111111111' and display_name = 'Manager Test' and avatar_url = 'https://x/m.png'$$, 'count:1'),
+      (25, 'Profile name comes from Google data',      'M', $$select count(*) from public.profiles where id = '11111111-1111-4111-8111-111111111111' and display_name = 'Manager' and avatar_url = 'https://x/m.png'$$, 'count:1'),
 
       -- ---------------- players are passive: every write must fail ----------------
       (30, 'P cannot add a buy-in',                    'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a0000000-0000-4000-8000-000000000003', 500)$$, 'deny'),
       (31, 'P cannot change a buy-in amount',          'P', $$update public.buy_ins set amount = 1 where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
       (32, 'P cannot delete buy-ins',                  'P', $$delete from public.buy_ins where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
-      (33, 'P cannot add a player',                    'P', $$insert into public.table_players (table_id, name, seat) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'פולש', 5)$$, 'deny'),
+      (33, 'P cannot add a player',                    'P', $$insert into public.table_players (table_id, nickname, color, seat) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'פולש', 1, 5)$$, 'deny'),
       (34, 'P cannot change own final result',         'P', $$update public.table_players set final_net = 9999 where user_id = '22222222-2222-4222-8222-222222222222'$$, 'rows:0'),
       (35, 'P cannot remove a player',                 'P', $$delete from public.table_players where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
       (36, 'P cannot change table settings / end game', 'P', $$update public.poker_tables set status = 'ended', initial_buy_in = 1 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
       (37, 'P cannot delete the table',                'P', $$delete from public.poker_tables where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
       (38, 'P cannot kick members',                    'P', $$delete from public.table_members where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
-      (39, 'P cannot write profiles',                  'P', $$update public.profiles set display_name = 'hacked'$$, 'deny'),
+      (39, 'P cannot write other people''s profiles',  'P', $$update public.profiles set display_name = 'hacked' where id <> '22222222-2222-4222-8222-222222222222'$$, 'rows:0'),
 
       -- ---------------- strangers see nothing and can't get in ----------------
       (40, 'S cannot see table T1',                    'S', $$select count(*) from public.poker_tables$$, 'count:0'),
@@ -89,7 +90,7 @@ begin
       (50, 'M cannot see table T2',                    'M', $$select count(*) from public.poker_tables where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'count:0'),
       (51, 'M cannot change T2',                       'M', $$update public.poker_tables set status = 'ended' where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:0'),
       (52, 'M cannot add a buy-in to T2',              'M', $$insert into public.buy_ins (table_id, player_id, amount) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 50)$$, 'deny'),
-      (53, 'M cannot seat a non-member account',       'M', $$insert into public.table_players (table_id, user_id, name, seat) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333', 'זר', 4)$$, 'deny'),
+      (53, 'M cannot seat a non-member account',       'M', $$insert into public.table_players (table_id, user_id, nickname, seat) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333', 'זר', 4)$$, 'deny'),
       (54, 'M cannot hand the table to someone else',  'M', $$update public.poker_tables set manager_id = '22222222-2222-4222-8222-222222222222' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
       (55, 'Buy-in must belong to a player of that table', 'Q', $$insert into public.buy_ins (table_id, player_id, amount) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'a0000000-0000-4000-8000-000000000002', 50)$$, 'error:23503'),
 
@@ -109,6 +110,33 @@ begin
       (82, 'Anon cannot read buy-ins',                 'anon', $$select count(*) from public.buy_ins$$, 'deny'),
       (83, 'Anon cannot open a table',                 'anon', $$insert into public.poker_tables (manager_id) values ('11111111-1111-4111-8111-111111111111')$$, 'deny'),
 
+      -- ---------------- display names + colors: users edit only their own ----------------
+      (100, 'P changes own display name',                'P', $$update public.profiles set display_name = 'פי החדש', name_confirmed_at = now() where id = '22222222-2222-4222-8222-222222222222'$$, 'rows:1'),
+      (101, 'P picks own color',                         'P', $$update public.profiles set color = 4 where id = '22222222-2222-4222-8222-222222222222'$$, 'rows:1'),
+      (102, 'P cannot rename the manager',               'P', $$update public.profiles set display_name = 'hacked' where id = '11111111-1111-4111-8111-111111111111'$$, 'rows:0'),
+      (103, 'Q (tablemate) cannot change P''s color',    'Q', $$update public.profiles set color = 0 where id = '22222222-2222-4222-8222-222222222222'$$, 'rows:0'),
+      (104, 'P cannot change own picture (trigger only)', 'P', $$update public.profiles set avatar_url = 'https://evil/x.png' where id = '22222222-2222-4222-8222-222222222222'$$, 'deny'),
+      (105, 'Empty display name is rejected',            'P', $$update public.profiles set display_name = '   ' where id = '22222222-2222-4222-8222-222222222222'$$, 'error:23514'),
+      (106, 'Display name over 30 chars is rejected',    'P', $$update public.profiles set display_name = repeat('א', 31) where id = '22222222-2222-4222-8222-222222222222'$$, 'error:23514'),
+      (107, 'Color outside the palette is rejected',     'P', $$update public.profiles set color = 99 where id = '22222222-2222-4222-8222-222222222222'$$, 'error:23514'),
+      (108, 'Google sign-in again (meta update)',        'postgres', $$update auth.users set raw_user_meta_data = '{"full_name":"Google Overwrite","avatar_url":"https://x/new.png"}' where id = '22222222-2222-4222-8222-222222222222'$$, 'rows:1'),
+      (109, '…keeps the chosen name, updates the picture', 'P', $$select count(*) from public.profiles where id = '22222222-2222-4222-8222-222222222222' and display_name = 'פי החדש' and color = 4 and avatar_url = 'https://x/new.png'$$, 'count:1'),
+      (110, 'New users get their Google first name',     'M', $$select count(*) from public.profiles where id = '11111111-1111-4111-8111-111111111111' and display_name = 'Manager'$$, 'count:1'),
+      (111, 'S still cannot see P''s profile',           'S', $$select count(*) from public.profiles where id = '22222222-2222-4222-8222-222222222222'$$, 'count:0'),
+      (112, 'Anon cannot change profiles',               'anon', $$update public.profiles set display_name = 'x'$$, 'deny'),
+
+      -- ---------------- per-table nickname + color: manager only ----------------
+      (120, 'M sets a per-table nickname for P in T1',   'M', $$update public.table_players set nickname = 'פי הגדול' where id = 'a0000000-0000-4000-8000-000000000003'$$, 'rows:1'),
+      (121, 'M sets a per-table color for P in T1',      'M', $$update public.table_players set color = 6 where id = 'a0000000-0000-4000-8000-000000000003'$$, 'rows:1'),
+      (122, '…which doesn''t change P''s profile',       'P', $$select count(*) from public.profiles where id = '22222222-2222-4222-8222-222222222222' and display_name = 'פי החדש' and color = 4$$, 'count:1'),
+      (123, 'P cannot set own per-table nickname',       'P', $$update public.table_players set nickname = 'אני המלך' where user_id = '22222222-2222-4222-8222-222222222222'$$, 'rows:0'),
+      (124, 'P cannot set own per-table color',          'P', $$update public.table_players set color = 0 where user_id = '22222222-2222-4222-8222-222222222222'$$, 'rows:0'),
+      (125, 'Q cannot rename players in T1',             'Q', $$update public.table_players set nickname = 'x' where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
+      (126, 'M''s nickname for P stays in T1 only',      'P', $$select count(*) from public.table_players where user_id = '22222222-2222-4222-8222-222222222222' and nickname = 'פי הגדול'$$, 'count:1'),
+      (127, 'Guest without a color is rejected',         'Q', $$insert into public.table_players (table_id, nickname, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'אורח', 5)$$, 'error:23514'),
+      (128, 'Guest without a name is rejected',          'Q', $$insert into public.table_players (table_id, color, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 2, 5)$$, 'error:23514'),
+      (129, 'Per-table color outside the palette is rejected', 'Q', $$update public.table_players set color = 8 where id = 'b0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
+
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 5 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins') and rowsecurity$$, 'count:5')
     ) as t(i, name, who, sql, expect)
@@ -118,7 +146,7 @@ begin
     ok := false;
     detail := null;
     begin
-      perform set_config('role', case when c.who = 'anon' then 'anon' else 'authenticated' end, true);
+      perform set_config('role', case c.who when 'anon' then 'anon' when 'postgres' then 'postgres' else 'authenticated' end, true);
       perform set_config(
         'request.jwt.claims',
         case c.who

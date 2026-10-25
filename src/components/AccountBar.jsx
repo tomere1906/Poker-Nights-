@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { isSupabaseConfigured } from '../lib/supabase.js';
-import { signInWithGoogle, signOut } from '../lib/auth.js';
-import { initials } from '../lib/game.js';
+import { signInWithGoogle } from '../lib/auth.js';
+import { paletteColor, suggestedColor } from '../lib/colors.js';
+import Avatar from './Avatar.jsx';
 
 function GoogleLogo() {
   return (
@@ -24,18 +25,16 @@ function ProfileAvatar({ profile }) {
         // Google profile pictures refuse requests that send a referrer.
         referrerPolicy="no-referrer"
         onError={() => setBroken(true)}
-        className="h-10 w-10 rounded-full object-cover ring-2 ring-white/80"
+        // The ring shows the user's chosen color.
+        style={{ '--tw-ring-color': paletteColor(profile.color ?? suggestedColor(profile.id)).hex }}
+        className="h-10 w-10 rounded-full object-cover ring-[3px]"
       />
     );
   }
-  return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-sky-300 to-sky-500 font-extrabold text-slate-900 ring-2 ring-white/80">
-      {initials(profile.display_name || '?')}
-    </div>
-  );
+  return <Avatar player={{ name: profile.display_name || '?', color: profile.color ?? suggestedColor(profile.id) }} size="h-10 w-10 text-base" />;
 }
 
-export default function AccountBar({ auth }) {
+export default function AccountBar({ auth, onOpenProfile }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -48,20 +47,18 @@ export default function AccountBar({ auth }) {
   if (auth.session) {
     const { profile } = auth;
     return (
-      <div className="flex items-center gap-3 rounded-2xl bg-slate-800/70 p-2 ps-3 ring-1 ring-white/5">
+      <button
+        type="button"
+        onClick={onOpenProfile}
+        className="flex w-full items-center gap-3 rounded-2xl bg-slate-800/70 p-2 ps-3 text-start ring-1 ring-white/5 active:scale-[0.99]"
+      >
         <ProfileAvatar profile={profile} />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-slate-400">מחובר/ת בתור</p>
-          <p className="truncate font-bold">{profile.display_name || auth.session.user.email}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => signOut()}
-          className="rounded-xl px-3 py-2 text-sm font-bold text-slate-300 active:bg-white/5"
-        >
-          התנתק
-        </button>
-      </div>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs text-slate-400">מחובר/ת בתור</span>
+          <span className="block truncate font-bold">{profile.display_name}</span>
+        </span>
+        <span className="rounded-xl px-3 py-2 text-sm font-bold text-slate-300">עריכה ←</span>
+      </button>
     );
   }
 
