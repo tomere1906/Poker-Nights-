@@ -293,6 +293,16 @@ function makeActions(view) {
       must(await supabase.from('poker_tables').update({ name: cleanTableName(name) }).eq('id', tableId));
     },
 
+    // The buy-in buttons, mid-game too (managers and co-managers; logged).
+    async setAmounts({ initialBuyIn, rebuyAmounts }) {
+      must(
+        await supabase
+          .from('poker_tables')
+          .update({ initial_buy_in: initialBuyIn, rebuy_amounts: rebuyAmounts })
+          .eq('id', tableId)
+      );
+    },
+
     // "עיגול סכומים" (the database lets only the manager change it).
     async setRounding(unit) {
       must(await supabase.from('poker_tables').update({ rounding: unit }).eq('id', tableId));

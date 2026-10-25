@@ -41,6 +41,11 @@ describe('describeLog: exits and table names', () => {
     expect(say('rounding_changed', { old: 10, new: 1 }, 'תומר')).toBe('תומר שינה: בלי עיגול (לשקל)');
   });
 
+  it('describes new buy-in amounts', () => {
+    expect(say('settings_changed', { initial_buy_in: 200, rebuy_amounts: [200, 500] }, 'תומר')).toBe('תומר עדכן את הסכומים: כניסה 200 ₪ · +200 +500');
+    expect(say('settings_changed', {}, 'תומר')).toBe('תומר עדכן את סכומי הכניסה');
+  });
+
   it('describes table renames', () => {
     expect(say('table_renamed', { old: null, new: 'שישי אצל אסף' }, 'תומר')).toBe('תומר קרא לשולחן ״שישי אצל אסף״');
     expect(say('table_renamed', { old: 'שישי', new: null }, 'תומר')).toBe('תומר הסיר את שם השולחן');

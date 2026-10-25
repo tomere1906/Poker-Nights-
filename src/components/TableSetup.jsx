@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { MAX_REBUY_BUTTONS, MIN_REBUY_BUTTONS, cleanSettings } from '../lib/game.js';
+import { cleanSettings } from '../lib/game.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
-import AmountInput from './AmountInput.jsx';
+import AmountsEditor, { amountsValid } from './AmountsEditor.jsx';
 import RoundingPicker from './RoundingPicker.jsx';
 
 function Card({ title, hint, children }) {
@@ -29,12 +29,7 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
   const [rounding, setRounding] = useState(defaults.rounding);
   const [busy, setBusy] = useState(false);
 
-  const distinct = new Set(amounts.filter((a) => a > 0));
-  const allFilled = initialBuyIn > 0 && amounts.every((a) => a > 0);
-  const valid = allFilled && distinct.size >= MIN_REBUY_BUTTONS;
-  const preview = [...distinct].sort((a, b) => a - b);
-
-  const setAmount = (i, value) => setAmounts((list) => list.map((a, j) => (j === i ? value : a)));
+  const valid = amountsValid(initialBuyIn, amounts);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -63,60 +58,13 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           </Card>
         )}
 
-        <Card title="כניסה ראשונה" hint="כל שחקן חדש ייכנס בסכום הזה (אפשר לשנות לשחקן מסוים)">
-          <AmountInput value={initialBuyIn} onChange={setInitialBuyIn} placeholder="סכום" />
-        </Card>
-
-        <Card title="כפתורי קנייה חוזרת" hint={`${MIN_REBUY_BUTTONS}–${MAX_REBUY_BUTTONS} כפתורים. ״סכום אחר״ תמיד זמין בנוסף.`}>
-          <div className="space-y-2">
-            {amounts.map((a, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className="flex-1">
-                  <AmountInput value={a} onChange={(v) => setAmount(i, v)} placeholder="סכום" />
-                </div>
-                {amounts.length > MIN_REBUY_BUTTONS && (
-                  <button
-                    type="button"
-                    onClick={() => setAmounts((list) => list.filter((_, j) => j !== i))}
-                    aria-label="הסר כפתור"
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950/60 text-xl text-slate-400 active:scale-90"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          {amounts.length < MAX_REBUY_BUTTONS && (
-            <button
-              type="button"
-              onClick={() => setAmounts((list) => [...list, 0])}
-              className="mt-2 w-full rounded-2xl border-2 border-dashed border-white/15 py-3 font-bold text-slate-300 active:scale-[0.98]"
-            >
-              + הוסף כפתור
-            </button>
-          )}
-
-          {preview.length > 0 && (
-            <>
-              <p className="mt-4 mb-2 text-xs text-slate-500">כך זה ייראה:</p>
-              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${preview.length}, 1fr)` }}>
-                {preview.map((a) => (
-                  <span
-                    key={a}
-                    dir="ltr"
-                    className="rounded-2xl bg-amber-300 py-3 text-center text-lg font-extrabold text-slate-900 shadow-lg shadow-amber-300/20"
-                  >
-                    +{a}
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
-          {allFilled && distinct.size < MIN_REBUY_BUTTONS && (
-            <p className="mt-3 text-sm text-amber-300">צריך לפחות {MIN_REBUY_BUTTONS} סכומים שונים</p>
-          )}
-        </Card>
+        <AmountsEditor
+          initialBuyIn={initialBuyIn}
+          amounts={amounts}
+          onInitialChange={setInitialBuyIn}
+          onAmountsChange={setAmounts}
+          Wrap={Card}
+        />
 
         <Card title="עיגול סכומים" hint="התוצאות וההעברות יעוגלו לסכום הזה, כדי שיהיה נוח להעביר">
           <RoundingPicker value={rounding} onChange={setRounding} />

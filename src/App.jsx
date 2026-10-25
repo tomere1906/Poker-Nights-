@@ -17,6 +17,7 @@ import NameSetup from './components/NameSetup.jsx';
 import ProfileScreen from './components/ProfileScreen.jsx';
 import JoinScreen from './components/JoinScreen.jsx';
 import StatsScreen from './components/StatsScreen.jsx';
+import LocalSettingsSheet from './components/LocalSettingsSheet.jsx';
 import { CardsIcon } from './components/Icons.jsx';
 
 // Matches the page background (html/body in index.css and the theme-color meta).
@@ -41,6 +42,7 @@ export default function App() {
   const needsName = Boolean(auth.session && auth.profile && !auth.profile.name_confirmed_at);
   const [confetti, setConfetti] = useState(0);
   const [toast, setToast] = useState(null);
+  const [localSettings, setLocalSettings] = useState(false);
   const toastTimer = useRef();
 
   useEffect(() => saveState(state), [state]);
@@ -170,6 +172,14 @@ export default function App() {
             <h1 className="text-2xl font-extrabold tracking-tight">Poker Nights</h1>
           </button>
           <span className="rounded-full bg-slate-700/60 px-2 py-0.5 text-xs font-bold text-slate-300">📱 מקומי</span>
+          <button
+            type="button"
+            onClick={() => setLocalSettings(true)}
+            aria-label="הגדרות השולחן"
+            className="ms-auto rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 active:scale-95"
+          >
+            ⚙️
+          </button>
         </header>
       )}
 
@@ -225,6 +235,18 @@ export default function App() {
             }}
           />
         </Settlement>
+      )}
+
+      {!needsName && !invite && screen === 'game' && localSettings && (
+        <LocalSettingsSheet
+          settings={settings}
+          onRounding={(unit) => dispatch({ type: 'setRounding', unit })}
+          onAmounts={(amounts) => {
+            dispatch({ type: 'setAmounts', ...amounts });
+            showToast('הסכומים עודכנו');
+          }}
+          onClose={() => setLocalSettings(false)}
+        />
       )}
 
       {confetti > 0 && <Confetti key={confetti} onDone={endConfetti} />}

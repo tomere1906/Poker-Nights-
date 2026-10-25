@@ -41,6 +41,17 @@ describe('table settings', () => {
     expect(gameReducer(s, { type: 'setRounding', unit: 3 }).settings.rounding).toBe(10);
   });
 
+  it('changes the buy-in buttons mid-game, keeping players and rounding', () => {
+    let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 50, rebuyAmounts: [50, 100], rounding: 5 } });
+    s = gameReducer(s, { type: 'startGame' });
+    s = add(s, 'א', 0, 50);
+    s = gameReducer(s, { type: 'setAmounts', initialBuyIn: 200, rebuyAmounts: [500, 200, 1000] });
+    expect(s.settings).toEqual({ initialBuyIn: 200, rebuyAmounts: [200, 500, 1000], rounding: 5 });
+    expect(totalIn(s.players[0])).toBe(50);
+    // Invalid amounts fall back to the defaults instead of breaking the table.
+    expect(gameReducer(s, { type: 'setAmounts', initialBuyIn: 0, rebuyAmounts: [] }).settings.rebuyAmounts).toEqual(DEFAULT_SETTINGS.rebuyAmounts);
+  });
+
   it('a new game closes the table but remembers the settings', () => {
     let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [30, 60] } });
     s = gameReducer(seat(s, 'א'), { type: 'newGame' });

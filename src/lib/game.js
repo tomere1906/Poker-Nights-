@@ -229,6 +229,12 @@ export function gameReducer(state, action) {
     case 'setRounding':
       // Changed per night (also on the settlement screen); the saved defaults stay.
       return { ...state, settings: { ...state.settings, rounding: cleanRounding(action.unit) } };
+    case 'setAmounts':
+      // Mid-game change of the buy-in buttons (an extreme night); the saved defaults stay.
+      return {
+        ...state,
+        settings: cleanSettings({ ...state.settings, initialBuyIn: action.initialBuyIn, rebuyAmounts: action.rebuyAmounts }),
+      };
     case 'setView':
       return { ...state, view: action.view };
     case 'openTable':

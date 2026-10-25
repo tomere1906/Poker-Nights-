@@ -58,8 +58,11 @@ export function describeLog(entry) {
       return d.mode === 'self_add' ? `${who} שינה: כל אחד מוסיף לעצמו כניסות` : `${who} שינה: רק מנהלים מוסיפים כניסות`;
     case 'rounding_changed':
       return d.new === 1 ? `${who} שינה: בלי עיגול (לשקל)` : `${who} שינה את עיגול הסכומים ל־${formatShekel(d.new)}`;
-    case 'settings_changed':
-      return `${who} עדכן את סכומי הכניסה`;
+    case 'settings_changed': {
+      const buttons = (d.rebuy_amounts ?? []).map((a) => `+${a}`).join(' ');
+      if (!d.initial_buy_in) return `${who} עדכן את סכומי הכניסה`;
+      return `${who} עדכן את הסכומים: כניסה ${formatShekel(d.initial_buy_in)}${buttons ? ` · ${buttons}` : ''}`;
+    }
     default:
       return `${who}: ${entry.action}`;
   }

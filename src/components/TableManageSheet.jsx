@@ -2,6 +2,8 @@ import { useState } from 'react';
 import BottomSheet from './BottomSheet.jsx';
 import Avatar from './Avatar.jsx';
 import RoundingPicker from './RoundingPicker.jsx';
+import { AmountsForm } from './AmountsEditor.jsx';
+import { formatShekel } from '../lib/format.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
 
 const MODES = [
@@ -9,7 +11,7 @@ const MODES = [
   { id: 'self_add', title: 'כל אחד את שלו', hint: 'כל שחקן יכול גם להוסיף כניסות לעצמו. תיקונים רק אצל המנהלים' },
 ];
 
-// Table management: name, rounding, buy-in mode and co-managers (manager only), delete table.
+// Table management: name, buy-in amounts (managers + co-managers, mid-game too), rounding, buy-in mode and co-managers (manager only), delete table.
 // Co-managers and players see the same information, read-only.
 export default function TableManageSheet({ view, actions, onDeleted, onClose, onError }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -27,7 +29,7 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
 
   return (
     <BottomSheet onClose={onClose} title={<h2 className="mb-4 text-xl font-bold">ניהול שולחן ⚙️</h2>}>
-      <div className="max-h-[65dvh] space-y-5 overflow-y-auto">
+      <div className="-mx-1 max-h-[65dvh] space-y-5 overflow-y-auto px-1 py-1">
         <section>
           <p className="mb-2 text-sm text-slate-400">שם השולחן</p>
           {isManager ? (
@@ -55,6 +57,25 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
             </form>
           ) : (
             <p className="rounded-2xl bg-slate-800/70 p-3 font-bold">{view.name ?? 'בלי שם'}</p>
+          )}
+        </section>
+
+        <section>
+          <p className="mb-2 text-sm text-slate-400">סכומי כניסה</p>
+          {view.canManage && !view.ended ? (
+            <AmountsForm
+              settings={view.settings}
+              onSave={(amounts) =>
+                actions.setAmounts(amounts).catch((e) => {
+                  onError(e.message);
+                  throw e;
+                })
+              }
+            />
+          ) : (
+            <p className="rounded-2xl bg-slate-800/70 p-3 font-bold">
+              כניסה {formatShekel(view.settings.initialBuyIn)} · <span dir="ltr">{view.settings.rebuyAmounts.map((a) => `+${a}`).join(' ')}</span>
+            </p>
           )}
         </section>
 
