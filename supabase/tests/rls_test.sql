@@ -5,7 +5,8 @@
 -- every row it created (test users, tables, buy-ins). The error message IS
 -- the report: "ALL n TESTS PASSED" or the list of failures.
 --
--- Users:  M = manager of T1 · P = player in T1 and T2 · S = stranger · Q = manager of T2
+-- Users:  M = manager of T1 and T3 · P = player in T1, T2, T3 · S = stranger · Q = manager of T2
+--         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -22,6 +23,7 @@ declare
   p constant uuid := '22222222-2222-4222-8222-222222222222';
   s constant uuid := '33333333-3333-4333-8333-333333333333';
   q constant uuid := '44444444-4444-4444-8444-444444444444';
+  cm constant uuid := '55555555-5555-4555-8555-555555555555';
   c record;
   n bigint;
   ok boolean;
@@ -36,7 +38,8 @@ begin
     (m, 'm@test.local', 'authenticated', 'authenticated', '{"full_name":"Manager Test","avatar_url":"https://x/m.png"}'),
     (p, 'p@test.local', 'authenticated', 'authenticated', '{"full_name":"Player Test"}'),
     (s, 's@test.local', 'authenticated', 'authenticated', '{"full_name":"Stranger Test"}'),
-    (q, 'q@test.local', 'authenticated', 'authenticated', '{"full_name":"Other Manager"}');
+    (q, 'q@test.local', 'authenticated', 'authenticated', '{"full_name":"Other Manager"}'),
+    (cm, 'c@test.local', 'authenticated', 'authenticated', '{"full_name":"Co Manager"}');
 
   for c in
     select * from (values
@@ -137,8 +140,62 @@ begin
       (128, 'Guest without a name is rejected',          'Q', $$insert into public.table_players (table_id, color, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 2, 5)$$, 'error:23514'),
       (129, 'Per-table color outside the palette is rejected', 'Q', $$update public.table_players set color = 8 where id = 'b0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
 
+      -- ---------------- co-managers (table T3) ----------------
+      (140, 'M opens table T3',                          'M', $$insert into public.poker_tables (id, invite_code) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'code-t3')$$, 'ok'),
+      (141, 'P joins T3',                                'P', $$insert into public.table_members (table_id, invite_code) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'code-t3')$$, 'ok'),
+      (142, 'C joins T3',                                'C', $$insert into public.table_members (table_id, invite_code) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'code-t3')$$, 'ok'),
+      (143, 'M seats P, a guest and C in T3',            'M', $$insert into public.table_players (id, table_id, user_id, nickname, color, seat) values ('c0000000-0000-4000-8000-000000000001', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', '22222222-2222-4222-8222-222222222222', null, null, 0), ('c0000000-0000-4000-8000-000000000002', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', null, 'אורח', 5, 1), ('c0000000-0000-4000-8000-000000000003', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', '55555555-5555-4555-8555-555555555555', null, null, 2)$$, 'ok'),
+      (144, 'S cannot join as a co-manager',             'S', $$insert into public.table_members (table_id, invite_code, is_co_manager) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'code-t3', true)$$, 'deny'),
+      (145, 'C (plain member) cannot add buy-ins',       'C', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000002', 50)$$, 'deny'),
+      (146, 'C cannot make himself co-manager',          'C', $$update public.table_members set is_co_manager = true where user_id = '55555555-5555-4555-8555-555555555555'$$, 'rows:0'),
+      (147, 'P cannot appoint C',                        'P', $$update public.table_members set is_co_manager = true where user_id = '55555555-5555-4555-8555-555555555555'$$, 'rows:0'),
+      (148, 'M appoints C as co-manager',                'M', $$update public.table_members set is_co_manager = true where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and user_id = '55555555-5555-4555-8555-555555555555'$$, 'rows:1'),
+      (149, 'Co-manager C adds a buy-in for the guest',  'C', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000002', 50)$$, 'ok'),
+      (150, 'Co-manager C seats another guest',          'C', $$insert into public.table_players (id, table_id, nickname, color, seat) values ('c0000000-0000-4000-8000-000000000004', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'אורח 2', 6, 4)$$, 'ok'),
+      (151, 'Co-manager C sets a per-table name',        'C', $$update public.table_players set nickname = 'פי' where id = 'c0000000-0000-4000-8000-000000000001'$$, 'rows:1'),
+      (152, 'Co-manager C enters a result',              'C', $$update public.table_players set final_value = 20 where id = 'c0000000-0000-4000-8000-000000000002'$$, 'rows:1'),
+      (153, 'Co-manager C starts the game',              'C', $$update public.poker_tables set status = 'playing' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:1'),
+      (154, 'Co-manager C cannot end the game',          'C', $$update public.poker_tables set status = 'ended' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'deny'),
+      (155, 'Co-manager C cannot change the buy-in mode', 'C', $$update public.poker_tables set buy_in_mode = 'self_add' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'deny'),
+      (156, 'Co-manager C cannot appoint co-managers',   'C', $$update public.table_members set is_co_manager = true where user_id = '22222222-2222-4222-8222-222222222222' and table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:0'),
+      (157, 'Co-manager C cannot change the invite code', 'C', $$update public.poker_tables set invite_code = 'new' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'deny'),
+      (158, 'Nobody can record a buy-in in someone else''s name', 'C', $$insert into public.buy_ins (table_id, player_id, amount, created_by) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000002', 50, '11111111-1111-4111-8111-111111111111')$$, 'deny'),
+      (159, 'Co-manager C cannot delete the table',      'C', $$delete from public.poker_tables where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:0'),
+
+      -- ---------------- buy-in mode "כל אחד את שלו" (self_add) ----------------
+      (160, 'In "managers only" P cannot add own buy-in', 'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
+      (161, 'M switches T3 to self-add',                 'M', $$update public.poker_tables set buy_in_mode = 'self_add' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:1'),
+      (162, 'P adds a buy-in for himself',               'P', $$insert into public.buy_ins (id, table_id, player_id, amount) values ('d0000000-0000-4000-8000-000000000001', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50)$$, 'ok'),
+      (163, 'P cannot add a buy-in for the guest',       'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000002', 50)$$, 'deny'),
+      (164, 'P cannot add a buy-in for another user',    'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000003', 50)$$, 'deny'),
+      (165, 'P cannot change his own buy-in',            'P', $$update public.buy_ins set amount = 500 where id = 'd0000000-0000-4000-8000-000000000001'$$, 'rows:0'),
+      (166, 'P cannot delete his own buy-in',            'P', $$delete from public.buy_ins where id = 'd0000000-0000-4000-8000-000000000001'$$, 'rows:0'),
+      (167, 'P cannot record his buy-in as the manager', 'P', $$insert into public.buy_ins (table_id, player_id, amount, created_by) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50, '11111111-1111-4111-8111-111111111111')$$, 'deny'),
+      (168, 'S cannot add buy-ins even in self-add mode', 'S', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
+
+      -- ---------------- removing a co-manager ----------------
+      (170, 'M removes C as co-manager',                 'M', $$update public.table_members set is_co_manager = false where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and user_id = '55555555-5555-4555-8555-555555555555'$$, 'rows:1'),
+      (171, 'C can no longer add buy-ins for others',    'C', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000002', 50)$$, 'deny'),
+      (172, 'C can no longer rename players',            'C', $$update public.table_players set nickname = 'x' where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:0'),
+
+      -- ---------------- change log ----------------
+      (180, 'Log: P''s self-added buy-in, by P',         'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and action = 'buy_in_added' and actor_id = '22222222-2222-4222-8222-222222222222' and details ->> 'self' = 'true' and (details ->> 'amount')::int = 50$$, 'count:1'),
+      (181, 'Log: C''s buy-in for the guest, by C',      'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and action = 'buy_in_added' and actor_id = '55555555-5555-4555-8555-555555555555' and details ->> 'name' = 'אורח'$$, 'count:1'),
+      (182, 'Log: M appointed and removed C',            'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and actor_id = '11111111-1111-4111-8111-111111111111' and action in ('co_manager_added', 'co_manager_removed')$$, 'count:2'),
+      (183, 'Log: C renamed P and started the game',     'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and actor_id = '55555555-5555-4555-8555-555555555555' and action in ('player_renamed', 'game_started')$$, 'count:2'),
+      (184, 'Log: blocked attempts leave no entries',    'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and action = 'game_ended'$$, 'count:0'),
+      (185, 'S cannot read T3''s log',                   'S', $$select count(*) from public.table_log$$, 'count:0'),
+      (186, 'P cannot write to the log',                 'P', $$insert into public.table_log (table_id, action) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'fake')$$, 'deny'),
+      (187, 'The manager cannot edit the log',           'M', $$update public.table_log set action = 'fake' where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'deny'),
+      (188, 'The manager cannot delete from the log',    'M', $$delete from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'deny'),
+      (189, 'Anon cannot read the log',                  'anon', $$select count(*) from public.table_log$$, 'deny'),
+      (190, 'M ends T3',                                 'M', $$update public.poker_tables set status = 'ended' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:1'),
+      (191, 'P cannot self-add after the game ended',    'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
+      (192, 'Log: M ended the game',                     'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and action = 'game_ended' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
+      (193, 'M can still delete the table (log cascades)', 'M', $$delete from public.poker_tables where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:1'),
+
       -- ---------------- every table has RLS on ----------------
-      (90, 'RLS is enabled on all 5 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins') and rowsecurity$$, 'count:5')
+      (90, 'RLS is enabled on all 6 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log') and rowsecurity$$, 'count:6')
     ) as t(i, name, who, sql, expect)
     order by i
   loop
@@ -154,6 +211,7 @@ begin
           when 'P' then json_build_object('sub', p, 'role', 'authenticated')::text
           when 'S' then json_build_object('sub', s, 'role', 'authenticated')::text
           when 'Q' then json_build_object('sub', q, 'role', 'authenticated')::text
+          when 'C' then json_build_object('sub', cm, 'role', 'authenticated')::text
           else json_build_object('role', 'anon')::text
         end,
         true

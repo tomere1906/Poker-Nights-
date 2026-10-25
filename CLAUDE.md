@@ -80,8 +80,8 @@ Build in steps and stop for the user's confirmation after each step.
    2. Schema, grants, RLS as migrations + SQL tests that try to break the rules (done, 55 tests, Advisor clean).
    3. Google sign-in (done: desktop and the iPhone home-screen app).
    4. **Display names + colors**: pick a name (prefilled with the Google first name) and a color on first login; profile screen to change both; per-table nickname and color override set by the manager; guests get a manager-chosen color. Migration + RLS + tests.
-   - **Decision point before step 5 (remind the user):** who may edit amounts? Options: a table setting ("only manager edits" / "each player edits their own" / "everyone edits"), or co-managers. Decide before building step 5; it changes the RLS write rules.
-   5. Create a table online + manager controls: settings, seating flow, buy-ins/undo, all in Supabase.
+   - **Decided before step 5:** co-managers + a per-table buy-in mode + a change log (see Roles). Built in step 5's first migration.
+   5. Create a table online + manager controls: settings (incl. buy-in mode), seating flow, buy-ins/undo, co-managers, change log view, all in Supabase.
    6. **Google branding + publishing**: simple Hebrew privacy policy and terms pages on the site; guide the user through Google Auth Platform → Branding (name, support email, home page, privacy/terms links, authorized domain) and publishing the app (basic scopes only: openid, email, profile), so the consent screen looks trustworthy and friends can sign in.
       - **No logo for now**: uploading one triggers Google's manual brand verification (days to weeks). Add it later only if needed.
       - The pages must be reachable at public URLs, i.e. on the live site (`main`). Pushing them to `main` needs the user's explicit OK at that moment.
@@ -101,7 +101,7 @@ Build in steps and stop for the user's confirmation after each step.
 ### Names
 - `profiles.display_name` is the name everyone sees: tables, "החבר'ה שלי", stats. **Never show an email address to other users**; emails live only in `auth.users`.
 - A user may change only their own `display_name` (column-level grant + RLS). Google data sets it only on first sign-in; later sign-ins update the avatar only, never a chosen name.
-- Per-table name: `table_players.nickname`, written only by that table's manager. Shown name = nickname, else the profile's display name. Guests: nickname is their name.
+- Per-table name: `table_players.nickname`, written only by that table's manager or co-managers. Shown name = nickname, else the profile's display name. Guests: nickname is their name.
 - Everything links by `user_id` (never by name), so renames never break history or stats. "החבר'ה שלי" groups by `user_id` and shows the profile name.
 
 ## Supabase setup
@@ -115,19 +115,23 @@ Build in steps and stop for the user's confirmation after each step.
 | Table | Holds | Read | Write |
 |---|---|---|---|
 | `profiles` | display name, color (0-7), avatar, `name_confirmed_at` (email stays only in `auth.users`) | self + people who share a table | the user: only own `display_name`, `color`, `name_confirmed_at` (column grant); trigger: created on first sign-in, later only the avatar |
-| `poker_tables` | manager, invite code, status (seating/playing/ended), settings, end mode | manager + members | insert: any signed-in user as manager; update/delete: manager |
-| `table_members` | users who joined via invite (read-only viewers) | people in the table | insert: yourself, with a valid invite code of a not-ended table; delete: manager |
-| `table_players` | seats: `user_id` (account) or null (guest, linkable later), per-table `nickname`/`color` (null = profile values; required for guests), results | people in the table | manager only; may seat only guests or members |
-| `buy_ins` | amount + time; FK `(player_id, table_id)` keeps it on the same table | people in the table | manager only |
+| `poker_tables` | manager, invite code, status (seating/playing/ended), settings, `buy_in_mode` (`managers` / `self_add`), end mode | manager + members | insert: any signed-in user as manager; update: manager + co-managers (trigger `guard_table_update`: only the manager ends/reopens, changes `buy_in_mode` or the invite code; nobody changes `manager_id`); delete: manager |
+| `table_members` | users who joined via invite; `is_co_manager` | people in the table | insert: yourself, as a plain member, with a valid invite code of a not-ended table; update (`is_co_manager` only): manager; delete: manager, or co-managers for plain members |
+| `table_players` | seats: `user_id` (account) or null (guest, linkable later), per-table `nickname`/`color` (null = profile values; required for guests), results | people in the table | manager + co-managers; may seat only guests or members |
+| `buy_ins` | amount, time, `created_by` (pinned to the writer); FK `(player_id, table_id)` keeps it on the same table | people in the table | manager + co-managers; in `self_add` mode a player may also **insert** for their own seat while the game isn't ended (never update/delete) |
+| `table_log` | who did what and when (`actor_id`, `action`, `details` jsonb) | people in the table | **nobody** directly; only triggers (`private.log_*`) write it |
 
 ## Roles & security rules (never weaken)
-- **Manager** (`poker_tables.manager_id`): the only writer of game data (players, buy-ins, results, settings, ending). Also plays.
-- **Member/player**: passive. Reads the live table (seats, buy-ins, pot) and their own stats. The only write (from step 7): taking their own free seat once after joining. No requests, no other writes.
+- **Manager** (`poker_tables.manager_id`): everything in their table. Also plays. **Only the manager** appoints/removes co-managers, ends (or reopens) the game, changes the buy-in mode, changes the invite code and deletes the table.
+- **Co-manager** (`table_members.is_co_manager`, set only by the manager): everything else the manager does in that table: buy-ins (add/change/delete), seating, per-table names/colors, results, starting the game, amounts.
+- **Buy-in mode** (table setting, chosen when opening, changeable by the manager): `managers` "רק מנהלים" (default): only manager + co-managers write. `self_add` "כל אחד את שלו": additionally each player may **add** buy-ins for **their own seat only**; no changes, no deletes, nothing for others. Corrections stay with the managers.
+- **Change log** (`table_log`): every add/change/remove of buy-ins, seats, names/colors, results, members, co-managers, game start/end and settings, with who and when. Visible to everyone at the table, written only by triggers, so it can't be forged, edited or deleted.
+- **Member/player**: otherwise passive. Reads the live table (seats, buy-ins, pot), the log and their own stats. Other writes: own buy-ins in `self_add` mode, and (from step 7) taking their own free seat once after joining.
 - **Stranger**: sees nothing. **anon**: has no grants at all.
 - **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges.
 - Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
 - Every new table: enable RLS, add policies, add explicit grants (never to `anon` unless truly public), index foreign keys, and extend `supabase/tests/rls_test.sql`.
-- `supabase/tests/rls_test.sql` must pass (78+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
+- `supabase/tests/rls_test.sql` must pass (124+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
 
 Design rules so phase 1 code carries over:
 - The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.
