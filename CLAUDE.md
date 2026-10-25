@@ -78,14 +78,18 @@ Build in steps and stop for the user's confirmation after each step.
 2. **Supabase + Google login + shared tables + stats** (in progress), in steps:
    1. Connect: client in `src/lib/supabase.js`, env vars (done).
    2. Schema, grants, RLS as migrations + SQL tests that try to break the rules (done, 55 tests, Advisor clean).
-   3. Google sign-in (done on desktop; iPhone home-screen app test still open).
+   3. Google sign-in (done: desktop and the iPhone home-screen app).
    4. **Display names + colors**: pick a name (prefilled with the Google first name) and a color on first login; profile screen to change both; per-table nickname and color override set by the manager; guests get a manager-chosen color. Migration + RLS + tests.
    5. Create a table online + manager controls: settings, seating flow, buy-ins/undo, all in Supabase.
-   6. Invites: "הזמן חברים" (Web Share, wa.me fallback, QR), opening the link → sign-in → auto-join; manager seats joined members or guests.
-   7. Live table for players: Realtime, read-only.
-   8. End game online: results entry (+/−, מאוזן, הפסיד הכל), whole-shekel settlement, close the table, store `final_net`.
-   9. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
-   10. Final security pass: Advisor, all SQL tests, docs; merging to `main` only when the user says so.
+   6. **Google branding + publishing**: simple Hebrew privacy policy and terms pages on the site; guide the user through Google Auth Platform → Branding (name, logo, support email, home page, privacy/terms links, authorized domain) and publishing the app (basic scopes only: openid, email, profile), so the consent screen looks trustworthy and friends can sign in.
+      - The pages must be reachable at public URLs, i.e. on the live site (`main`). Pushing them to `main` needs the user's explicit OK at that moment.
+      - The consent screen will still name `emkzkgpqaupqudzgewxa.supabase.co` unless a Supabase custom domain (paid) is used.
+   7. Invites: "הזמן חברים" (Web Share, wa.me fallback, QR); opening the link → sign-in → auto-join → **the player picks their own free seat**. The manager can still move anyone and seat guests.
+      - RLS + tests: a member may insert only their own seat (`user_id = auth.uid()`), only once per table, only in a free seat, only before the game ends, with no nickname/color override and no results. They can't move others or themselves afterwards (only the manager moves). Seats must be unique per table (`unique (table_id, seat)`, deferrable so the manager can swap two players in one transaction/RPC).
+   8. Live table for players: Realtime, read-only.
+   9. End game online: results entry (+/−, מאוזן, הפסיד הכל), whole-shekel settlement, close the table, store `final_net`.
+   10. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
+   11. Final security pass: Advisor, all SQL tests, docs; merging to `main` only when the user says so.
 3. **Share as image** (after the Supabase work): replace "העתק לוואטסאפ" with "שתף כתמונה": render the settlement card to PNG and open the share sheet (iPhone).
 
 ## Names & colors (rules)
@@ -116,7 +120,7 @@ Build in steps and stop for the user's confirmation after each step.
 
 ## Roles & security rules (never weaken)
 - **Manager** (`poker_tables.manager_id`): the only writer of game data (players, buy-ins, results, settings, ending). Also plays.
-- **Member/player**: fully passive. Reads the live table (seats, buy-ins, pot) and their own stats. No requests, no writes.
+- **Member/player**: passive. Reads the live table (seats, buy-ins, pot) and their own stats. The only write (from step 7): taking their own free seat once after joining. No requests, no other writes.
 - **Stranger**: sees nothing. **anon**: has no grants at all.
 - **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges.
 - Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
