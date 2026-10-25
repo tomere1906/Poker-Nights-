@@ -9,6 +9,7 @@
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
+--         300+: stats views (my_games, my_tablemates) over all of the above
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -297,6 +298,36 @@ begin
       (286, '…ended_at is cleared',                        'M', $$select count(*) from public.poker_tables where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and ended_at is null$$, 'count:1'),
       (287, '…and buy-ins work again',                     'M', $$insert into public.buy_ins (table_id, player_id, amount) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000001', 50)$$, 'ok'),
       (288, 'Log: started + reopened, both by M',          'P', $$select count(*) from public.table_log where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and action = 'game_started' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:2'),
+
+      -- ---------------- stats: my_games / my_tablemates ----------------
+      -- Now: T1 ended (M, guest, P seated) · T2 open · T4 ended (guest + P; M managed it without a seat)
+      --      T5 reopened (M, P, guest) · Q is in T2 and watched T4 without a seat.
+      (300, 'P: only closed games he played count (T1, T4)',  'P', $$select count(*) from public.my_games$$, 'count:2'),
+      (301, 'P: the reopened T5 doesn''t count (yet)',        'P', $$select count(*) from public.my_games where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'count:0'),
+      (302, 'P: the open T2 doesn''t count',                  'P', $$select count(*) from public.my_games where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'count:0'),
+      (303, 'P: his own nets only (−50, −10)',                'P', $$select count(*) from public.my_games having sum(final_net) = -60$$, 'count:2'),
+      (304, 'P: my_games never shows other players'' rows',  'P', $$select count(*) from public.my_games where player_id in ('a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000001')$$, 'count:0'),
+      (305, 'M: managing T4 without a seat doesn''t count',   'M', $$select count(*) from public.my_games where table_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'$$, 'count:0'),
+      (306, 'M: only T1 counts',                              'M', $$select count(*) from public.my_games$$, 'count:1'),
+      (307, 'Q: watching T4 without a seat gives no games',   'Q', $$select count(*) from public.my_games$$, 'count:0'),
+      (308, '…and no tablemates',                             'Q', $$select count(*) from public.my_tablemates$$, 'count:0'),
+      (309, 'S sees no games',                                'S', $$select count(*) from public.my_games$$, 'count:0'),
+      (310, 'S sees no tablemates',                           'S', $$select count(*) from public.my_tablemates$$, 'count:0'),
+      (311, 'Anon cannot read my_games',                      'anon', $$select count(*) from public.my_games$$, 'deny'),
+      (312, 'Anon cannot read my_tablemates',                 'anon', $$select count(*) from public.my_tablemates$$, 'deny'),
+      (313, 'M''s tablemates: P only from T1 (−50), not T2/T5', 'M', $$select count(*) from public.my_tablemates where user_id = '22222222-2222-4222-8222-222222222222' and games = 1 and total_net = -50$$, 'count:1'),
+      (314, 'M''s tablemates: the guest by name, marked as guest', 'M', $$select count(*) from public.my_tablemates where is_guest and user_id is null and name = 'אורח' and games = 1 and total_net = 20$$, 'count:1'),
+      (315, 'P''s tablemates: guest "אורח" merged over T1 + T4', 'P', $$select count(*) from public.my_tablemates where is_guest and name = 'אורח' and games = 2 and total_net = 30$$, 'count:1'),
+      (316, 'P''s tablemates: M only from closed shared games', 'P', $$select count(*) from public.my_tablemates where user_id = '11111111-1111-4111-8111-111111111111' and games = 1 and total_net = 30$$, 'count:1'),
+      (317, 'P''s tablemates: Q isn''t listed (no closed game together)', 'P', $$select count(*) from public.my_tablemates where user_id = '44444444-4444-4444-8444-444444444444'$$, 'count:0'),
+      (318, 'Tablemates never include yourself',              'P', $$select count(*) from public.my_tablemates where user_id = '22222222-2222-4222-8222-222222222222'$$, 'count:0'),
+      (319, 'Tablemates show the profile name, not the per-table nickname', 'M', $$select count(*) from public.my_tablemates where user_id = '22222222-2222-4222-8222-222222222222' and name = 'פי החדש'$$, 'count:1'),
+      (320, 'M closes T5 again',                              'M', $$select public.end_game('ffffffff-ffff-4fff-8fff-ffffffffffff', '{"f0000000-0000-4000-8000-000000000001": -50, "f0000000-0000-4000-8000-000000000002": 30, "f0000000-0000-4000-8000-000000000003": 20}')$$, 'ok'),
+      (321, 'P: the re-closed T5 counts again (3 games)',      'P', $$select count(*) from public.my_games$$, 'count:3'),
+      (322, 'P''s tablemate M: now 2 games (+30 −50)',         'P', $$select count(*) from public.my_tablemates where user_id = '11111111-1111-4111-8111-111111111111' and games = 2 and total_net = -20$$, 'count:1'),
+      (323, 'Buy-ins are summed per game (P in T5: one of 50)', 'P', $$select count(*) from public.my_games where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and buy_in_total = 50 and buy_in_count = 1 and player_count = 3$$, 'count:1'),
+      (324, 'Stats views: read-only for users, nothing for anon', 'P', $$select count(*) from (values ('public.my_games'), ('public.my_tablemates')) v(t) where has_table_privilege('authenticated', t, 'INSERT, UPDATE, DELETE, TRUNCATE') or has_table_privilege('anon', t, 'SELECT') or not has_table_privilege('authenticated', t, 'SELECT')$$, 'count:0'),
+      (325, 'Both stats views run with the viewer''s rights', 'M', $$select count(*) from pg_class where relnamespace = 'public'::regnamespace and relname in ('my_games', 'my_tablemates') and 'security_invoker=true' = any(reloptions)$$, 'count:2'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 6 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log') and rowsecurity$$, 'count:6'),

@@ -16,6 +16,7 @@ import TableSetup from './components/TableSetup.jsx';
 import NameSetup from './components/NameSetup.jsx';
 import ProfileScreen from './components/ProfileScreen.jsx';
 import JoinScreen from './components/JoinScreen.jsx';
+import StatsScreen from './components/StatsScreen.jsx';
 import { CardsIcon } from './components/Icons.jsx';
 
 // Matches the page background (html/body in index.css and the theme-color meta).
@@ -26,7 +27,7 @@ export default function App() {
   // The app opens on the start screen, unless a table was open (refresh or
   // reopening the home-screen app returns to it). The local game lives in
   // `state`; online tables live in Supabase.
-  // 'home' | 'profile' | 'setup-local' | 'setup-online' | 'game' (local) | 'online'
+  // 'home' | 'profile' | 'stats' | 'setup-local' | 'setup-online' | 'game' (local) | 'online'
   const [start] = useState(() => initialScreen(state.tableOpen));
   const [screen, setScreen] = useState(start.screen);
   const [onlineTableId, setOnlineTableId] = useState(start.tableId);
@@ -46,9 +47,9 @@ export default function App() {
 
   useEffect(() => rememberScreen(screen, onlineTableId), [screen, onlineTableId]);
 
-  // Back at an online table after a refresh, but signed out: go home.
+  // Back at an online table after a refresh (or in stats), but signed out: go home.
   useEffect(() => {
-    if (screen === 'online' && !auth.loading && !auth.session) setScreen('home');
+    if ((screen === 'online' || screen === 'stats') && !auth.loading && !auth.session) setScreen('home');
   }, [screen, auth.loading, auth.session]);
 
   // Every screen uses the same dark background; re-assert the theme color on
@@ -104,7 +105,12 @@ export default function App() {
           onNewLocal={() => setScreen('setup-local')}
           onContinueOnline={openOnline}
           onNewOnline={() => setScreen('setup-online')}
+          onOpenStats={() => setScreen('stats')}
         />
+      )}
+
+      {!needsName && !invite && screen === 'stats' && auth.session && (
+        <StatsScreen onBack={goHome} onOpenTable={openOnline} />
       )}
 
       {!needsName && !invite && screen === 'profile' && auth.profile && (

@@ -55,6 +55,10 @@ The user plays on their phone at the table. Everything must be quick, simple, an
    - Online (`OnlineEndGame`): managers and co-managers enter results; typing is instant on the phone and saved ~0.6 s later, other managers' entries arrive live. Results are stored as **chips** (`final_value`), so the +/− and chips modes are only input styles.
 6. **Settlement**: list of `X → Y: amount ₪`, "copy to WhatsApp", and "new game" (back to the start screen).
    - Online: after "מי מעביר למי", **only the manager** taps "סגור את השולחן 🔒" (twice). `public.end_game` stores every player's settled `final_net` and ends the table in one transaction; the database refuses unless every player has a result and they add up to 0. Then everyone at the table sees the settlement live (with confetti), the table is locked, and the manager can "פתח מחדש לתיקונים".
+7. **Stats** ("📊 סטטיסטיקה והחבר׳ה שלי" on the start screen, signed-in only; `StatsScreen`). Only closed online games the viewer **played in** (had a seat) count; local tables never do; a reopened game drops out until it's closed again. Only the viewer sees their stats.
+   - "📊 שלי": games, total net, average per game, best/worst night, an SVG chart (net per night as bars + running total line, oldest on the right for RTL, no chart library), fun facts ("הפסיד הכל" count = left with 0 chips, average buy-ins per night, current/best winning streak = nights in profit in a row, an even night breaks it), and the list of games (table name, date) that opens the table.
+   - "👥 החבר׳ה שלי": everyone the viewer sat with, numbers only from those shared closed games; accounts by `user_id` with the profile name, guests grouped by name with an "אורח" mark; sort by total, games or average.
+   - Logic: pure functions in `src/lib/stats.js` (tested); data from the views via `src/lib/statsData.js`.
 
 ## Settlement algorithm rules (do not break these)
 - All amounts are whole shekels. Never show 2.5 or any fraction.
@@ -96,8 +100,8 @@ Build in steps and stop for the user's confirmation after each step.
       - Also: palette grows to 12 colors (indexes 0-11); new players get a color not yet taken at the table.
    7. **Live table** (done): every change writes a `table_log` row in the same transaction, so the app subscribes (Realtime `postgres_changes`, RLS-checked per subscriber) only to new log rows of the open table and then reloads through the normal RLS reads. Only `table_log` is in the `supabase_realtime` publication (Realtime cannot apply RLS to DELETE events). Also reloads when the phone returns to the app or comes back online. Header shows "אונליין · חי" while connected.
    - **Added before step 8:** players leaving mid-game (exits), table names, the personal invite message + Open Graph preview (see Features 2, 3).
-   8. **End game online** (in progress): results entry (+/−, מאוזן, הפסיד הכל, prefilled from exits), whole-shekel settlement, the manager closes the table via `public.end_game` (stores `final_net`, must balance), ended tables are locked until the manager reopens.
-   9. Personal stats + "החבר'ה שלי" (numbers only from games the viewer attended).
+   8. **End game online** (done): results entry (+/−, מאוזן, הפסיד הכל, prefilled from exits), whole-shekel settlement, the manager closes the table via `public.end_game` (stores `final_net`, must balance), ended tables are locked until the manager reopens.
+   9. **Personal stats + "החבר'ה שלי"** (in progress; see Features 7): views `my_games` / `my_tablemates` (security invoker) + security tests.
    10. **Google branding + publishing**, right before inviting all friends: simple Hebrew privacy policy and terms pages on the site; guide the user through Google Auth Platform → Branding (name, support email, home page, privacy/terms links, authorized domain) and publishing the app (basic scopes only: openid, email, profile), so the consent screen looks trustworthy and friends can sign in.
        - **No logo for now**: uploading one triggers Google's manual brand verification (days to weeks). Add it later only if needed.
        - The pages must be reachable at public URLs, i.e. on the live site (`main`). Pushing them to `main` needs the user's explicit OK at that moment.
@@ -131,6 +135,8 @@ Build in steps and stop for the user's confirmation after each step.
 | `table_players` | seats: `user_id` (account) or null (guest, linkable later), per-table `nickname`/`color` (null = profile values; required for guests), exit `out_kind` (`lost_all`/`even`/`amount`) + `out_chips`, `final_value` (chips left with), `final_net` (settled, written by `public.end_game`) | people in the table | manager + co-managers while the game isn't ended; may seat only guests or members; members seat themselves (see step 6) |
 | `buy_ins` | amount, time, `created_by` (pinned to the writer); FK `(player_id, table_id)` keeps it on the same table | people in the table | manager + co-managers while the game isn't ended; never for a player who is out (`private.player_can_buy_in`); in `self_add` mode a player may also **insert** for their own seat (never update/delete) |
 | `table_log` | who did what and when (`actor_id`, `action`, `details` jsonb) | people in the table | **nobody** directly; only triggers (`private.log_*`) write it |
+| view `my_games` | the viewer's closed games where they had a seat: table name, `ended_at`, own `final_net`, own buy-in total/count, player count | the viewer only (filters on `auth.uid()`; `security_invoker`, so RLS applies) | nobody (select only, nothing for anon) |
+| view `my_tablemates` | per person the viewer sat with in those games: `mate_key` (user id, or `guest:<name>`), profile name / guest name, games, total net | the viewer only (same) | nobody |
 
 ## Roles & security rules (never weaken)
 - **Manager** (`poker_tables.manager_id`): everything in their table. Also plays. **Only the manager** appoints/removes co-managers, ends/closes (or reopens) the game, renames the table, changes the buy-in mode, changes the invite code and deletes the table.
@@ -140,10 +146,10 @@ Build in steps and stop for the user's confirmation after each step.
 - **Change log** (`table_log`): every add/change/remove of buy-ins, seats, names/colors, exits/returns, results, members, co-managers, game start/end, table name and settings, with who and when. Visible to everyone at the table, written only by triggers, so it can't be forged, edited or deleted.
 - **Member/player**: otherwise passive. Reads the live table (seats, buy-ins, pot), the log and their own stats. Other writes: own buy-ins in `self_add` mode, and (from step 6) taking their own free seat once after joining.
 - **Stranger**: sees nothing. **anon**: has no grants at all.
-- **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges.
+- **Stats** come only from rows the viewer can read, i.e. tables they were part of. Never compute stats with elevated privileges: stats views are always `security_invoker = true`, filter on `auth.uid()`, count only `status = 'ended'` tables where the viewer has a seat, and are granted `select` to `authenticated` only.
 - Policy helpers are `SECURITY DEFINER` with `search_path = ''` in the `private` schema (not exposed by the API). Never put SECURITY DEFINER functions in `public`.
 - Every new table: enable RLS, add policies, add explicit grants (never to `anon` unless truly public), index foreign keys, and extend `supabase/tests/rls_test.sql`.
-- `supabase/tests/rls_test.sql` must pass (216+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
+- `supabase/tests/rls_test.sql` must pass (242+ cases) after every schema change. It runs as one DO block and rolls itself back by raising at the end; the error text is the report.
 
 Design rules so phase 1 code carries over:
 - The game state is one **table**: `settings`, `players`, `started`, `finals`, `endMode`. Later this maps onto Supabase rows: `tables` (settings, status, manager), `table_players` (seat, optional user id, guest name), `buy_ins` (amount, time, status: pending/approved), `results`.

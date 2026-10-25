@@ -22,7 +22,7 @@ function Section({ icon, title, hint, children }) {
   );
 }
 
-function OnlineSection({ auth, onContinueOnline, onNewOnline }) {
+function OnlineSection({ auth, onContinueOnline, onNewOnline, onOpenStats }) {
   const [tables, setTables] = useState(null);
   const [error, setError] = useState(null);
   const signedIn = Boolean(auth.session);
@@ -57,6 +57,9 @@ function OnlineSection({ auth, onContinueOnline, onNewOnline }) {
           )}
           <button type="button" onClick={onNewOnline} className={latest ? SECONDARY : PRIMARY}>
             פתח שולחן אונליין {latest ? 'חדש' : '🌐'}
+          </button>
+          <button type="button" onClick={onOpenStats} className={SECONDARY}>
+            📊 סטטיסטיקה והחבר׳ה שלי
           </button>
         </>
       )}
@@ -93,7 +96,16 @@ function LocalSection({ state, onContinueLocal, onNewLocal }) {
   );
 }
 
-export default function HomeScreen({ state, auth, onOpenProfile, onContinueLocal, onNewLocal, onContinueOnline, onNewOnline }) {
+export default function HomeScreen({
+  state,
+  auth,
+  onOpenProfile,
+  onContinueLocal,
+  onNewLocal,
+  onContinueOnline,
+  onNewOnline,
+  onOpenStats,
+}) {
   return (
     <div className="flex flex-1 flex-col gap-4">
       <AccountBar auth={auth} onOpenProfile={onOpenProfile} />
@@ -112,7 +124,7 @@ export default function HomeScreen({ state, auth, onOpenProfile, onContinueLocal
       </div>
 
       {isSupabaseConfigured && !auth.loading && (
-        <OnlineSection auth={auth} onContinueOnline={onContinueOnline} onNewOnline={onNewOnline} />
+        <OnlineSection auth={auth} onContinueOnline={onContinueOnline} onNewOnline={onNewOnline} onOpenStats={onOpenStats} />
       )}
       <LocalSection state={state} onContinueLocal={onContinueLocal} onNewLocal={onNewLocal} />
     </div>

@@ -12,6 +12,12 @@ export function formatTime(ms) {
   return new Date(ms).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+// "25.10.26".
+export function formatDate(ms) {
+  if (ms == null || Number.isNaN(ms)) return '—';
+  return new Date(ms).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: '2-digit' });
+}
+
 // Keep only digits; returns 0 for empty input.
 export function parseAmount(text) {
   const digits = String(text).replace(/\D/g, '');
