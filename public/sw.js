@@ -1,10 +1,11 @@
 // Minimal offline support: network-first for pages, cache-first for assets.
 // Paths are relative to this file, so it works under any base path (e.g. GitHub Pages).
-const CACHE = 'poker-nights-v3';
+// v4: new logo/app icons (icons are cache-first, so a new name drops the old ones).
+const CACHE = 'poker-nights-v4';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './icon-192.png'])));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', './manifest.webmanifest', './icon.svg', './icon-192.png', './apple-touch-icon.png'])));
   self.skipWaiting();
 });
 

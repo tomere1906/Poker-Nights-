@@ -89,6 +89,8 @@ Tests should assert these properties (integers, all transfers ≥ 20 ₪, each p
 
 ## Design
 Cute and playful: soft shadows, rounded corners, chip and card icons, confetti on "End game". Dark mode by default. Large tap targets for phone use.
+- Tagline: "הקלפים עליכם, החשבון עלינו" (start screen, `<title>`, meta/OG description, preview image).
+- Logo: two cards, a red ♥ behind and a black ♠ in front, with a blue and a red chip (`CardsIcon` in `src/components/Icons.jsx`). The same art is the app icon: `public/icon.svg` (favicon), `icon-192.png`, `icon-512.png` (also maskable: content inside the safe zone), `apple-touch-icon.png` (180×180, full-bleed square; iOS rounds it). After changing icons, bump `CACHE` in `public/sw.js` (icons are cache-first).
 
 ## Roadmap (multiplayer branch)
 Build in steps and stop for the user's confirmation after each step.

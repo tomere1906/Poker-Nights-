@@ -120,7 +120,7 @@ export default function HomeScreen({
           </div>
         </div>
         <h1 className="text-3xl font-extrabold tracking-tight">Poker Nights</h1>
-        <p className="mt-1 text-slate-400">קניות, תוצאות ומי מעביר למי – בלי מחשבון</p>
+        <p className="mt-1 text-slate-400">הקלפים עליכם, החשבון עלינו</p>
       </div>
 
       {isSupabaseConfigured && !auth.loading && (
