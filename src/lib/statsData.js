@@ -32,10 +32,33 @@ export function toMate(row) {
   };
 }
 
+export function toHidden(row) {
+  return {
+    tableId: row.table_id,
+    tableName: row.table_name,
+    status: row.status,
+    endedAt: row.ended_at ? Date.parse(row.ended_at) : null,
+    hiddenAt: Date.parse(row.hidden_at),
+    net: row.final_net,
+  };
+}
+
+// my_games and my_tablemates already leave out the viewer's hidden games.
 export async function loadStats() {
-  const [games, mates] = await Promise.all([
+  const [games, mates, hidden] = await Promise.all([
     supabase.from('my_games').select('*').order('ended_at'),
     supabase.from('my_tablemates').select('*'),
+    supabase.from('my_hidden_games').select('*').order('hidden_at', { ascending: false }),
   ]);
-  return { games: must(games).map(toGame), mates: must(mates).map(toMate) };
+  return { games: must(games).map(toGame), mates: must(mates).map(toMate), hidden: must(hidden).map(toHidden) };
+}
+
+// Hiding only affects the viewer's own stats; nothing is deleted.
+export async function hideGame(tableId) {
+  const { error } = await supabase.from('hidden_games').insert({ table_id: tableId });
+  if (error && error.code !== '23505') throw error; // already hidden is fine
+}
+
+export async function unhideGame(tableId) {
+  must(await supabase.from('hidden_games').delete().eq('table_id', tableId));
 }

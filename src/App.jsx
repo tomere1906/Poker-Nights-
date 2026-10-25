@@ -110,7 +110,7 @@ export default function App() {
       )}
 
       {!needsName && !invite && screen === 'stats' && auth.session && (
-        <StatsScreen onBack={goHome} onOpenTable={openOnline} />
+        <StatsScreen onBack={goHome} onOpenTable={openOnline} showToast={showToast} />
       )}
 
       {!needsName && !invite && screen === 'profile' && auth.profile && (

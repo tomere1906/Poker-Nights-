@@ -9,7 +9,7 @@
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
---         300+: stats views (my_games, my_tablemates) over all of the above
+--         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games)
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -326,11 +326,33 @@ begin
       (321, 'P: the re-closed T5 counts again (3 games)',      'P', $$select count(*) from public.my_games$$, 'count:3'),
       (322, 'P''s tablemate M: now 2 games (+30 −50)',         'P', $$select count(*) from public.my_tablemates where user_id = '11111111-1111-4111-8111-111111111111' and games = 2 and total_net = -20$$, 'count:1'),
       (323, 'Buy-ins are summed per game (P in T5: one of 50)', 'P', $$select count(*) from public.my_games where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and buy_in_total = 50 and buy_in_count = 1 and player_count = 3$$, 'count:1'),
-      (324, 'Stats views: read-only for users, nothing for anon', 'P', $$select count(*) from (values ('public.my_games'), ('public.my_tablemates')) v(t) where has_table_privilege('authenticated', t, 'INSERT, UPDATE, DELETE, TRUNCATE') or has_table_privilege('anon', t, 'SELECT') or not has_table_privilege('authenticated', t, 'SELECT')$$, 'count:0'),
-      (325, 'Both stats views run with the viewer''s rights', 'M', $$select count(*) from pg_class where relnamespace = 'public'::regnamespace and relname in ('my_games', 'my_tablemates') and 'security_invoker=true' = any(reloptions)$$, 'count:2'),
+      (324, 'Stats views: read-only for users, nothing for anon', 'P', $$select count(*) from (values ('public.my_games'), ('public.my_tablemates'), ('public.my_hidden_games')) v(t) where has_table_privilege('authenticated', t, 'INSERT, UPDATE, DELETE, TRUNCATE') or has_table_privilege('anon', t, 'SELECT') or not has_table_privilege('authenticated', t, 'SELECT')$$, 'count:0'),
+      (325, 'All stats views run with the viewer''s rights', 'M', $$select count(*) from pg_class where relnamespace = 'public'::regnamespace and relname in ('my_games', 'my_tablemates', 'my_hidden_games') and 'security_invoker=true' = any(reloptions)$$, 'count:3'),
+
+      -- ---------------- hiding games from your own stats ----------------
+      -- Now P has 3 closed games (T1, T4, T5); M has 2 (T1, T5).
+      (330, 'P hides T4 (a test game)',                       'P', $$insert into public.hidden_games (table_id) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd')$$, 'ok'),
+      (331, 'P''s stats: T4 is gone (2 games left)',          'P', $$select count(*) from public.my_games$$, 'count:2'),
+      (332, 'P''s hidden list shows T4',                      'P', $$select count(*) from public.my_hidden_games where table_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' and final_net = -10 and status = 'ended'$$, 'count:1'),
+      (333, 'P''s tablemates skip T4 (guest: T1 + T5 only)',  'P', $$select count(*) from public.my_tablemates where is_guest and name = 'אורח' and games = 2 and total_net = 40$$, 'count:1'),
+      (334, 'P hides T5 too',                                 'P', $$insert into public.hidden_games (table_id) values ('ffffffff-ffff-4fff-8fff-ffffffffffff')$$, 'ok'),
+      (335, 'M still has T5 in his own stats',                'M', $$select count(*) from public.my_games$$, 'count:2'),
+      (336, '…and still counts P from T5 (2 games, −20)',     'M', $$select count(*) from public.my_tablemates where user_id = '22222222-2222-4222-8222-222222222222' and games = 2 and total_net = -20$$, 'count:1'),
+      (337, 'Hiding deletes nothing: P''s T5 seat is still there', 'P', $$select count(*) from public.table_players where id = 'f0000000-0000-4000-8000-000000000002' and final_net = 30$$, 'count:1'),
+      (338, 'A game can''t be hidden twice',                  'P', $$insert into public.hidden_games (table_id) values ('ffffffff-ffff-4fff-8fff-ffffffffffff')$$, 'error:23505'),
+      (339, 'M can''t see P''s hidden list',                  'M', $$select count(*) from public.hidden_games$$, 'count:0'),
+      (340, '…not through the view either',                  'M', $$select count(*) from public.my_hidden_games$$, 'count:0'),
+      (341, 'M can''t hide a game for P',                     'M', $$insert into public.hidden_games (user_id, table_id) values ('22222222-2222-4222-8222-222222222222', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')$$, 'deny'),
+      (342, 'M can''t unhide P''s games',                     'M', $$delete from public.hidden_games where user_id = '22222222-2222-4222-8222-222222222222'$$, 'rows:0'),
+      (343, 'S can''t hide a table he isn''t in',             'S', $$insert into public.hidden_games (table_id) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')$$, 'deny'),
+      (344, 'Anon can''t read hidden lists',                  'anon', $$select count(*) from public.hidden_games$$, 'deny'),
+      (345, 'Hidden rows can''t be edited (hide/unhide only)', 'P', $$update public.hidden_games set table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
+      (346, 'P unhides T4',                                   'P', $$delete from public.hidden_games where table_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'$$, 'rows:1'),
+      (347, '…T4 is back in P''s stats (T5 still hidden)',    'P', $$select count(*) from public.my_games where table_id in ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')$$, 'count:2'),
+      (348, 'P''s own list now holds just T5',                'P', $$select count(*) from public.hidden_games where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'count:1'),
 
       -- ---------------- every table has RLS on ----------------
-      (90, 'RLS is enabled on all 6 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log') and rowsecurity$$, 'count:6'),
+      (90, 'RLS is enabled on all 7 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games') and rowsecurity$$, 'count:7'),
       (91, 'Realtime publishes only table_log',        'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename <> 'table_log'$$, 'count:0'),
       (92, '…and table_log is published',              'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'table_log'$$, 'count:1')
     ) as t(i, name, who, sql, expect)

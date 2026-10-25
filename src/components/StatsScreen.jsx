@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { loadStats } from '../lib/statsData.js';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { hideGame, loadStats, unhideGame } from '../lib/statsData.js';
 import { MATE_SORTS, personalStats, sortMates, withAverages } from '../lib/stats.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { suggestedColor } from '../lib/colors.js';
@@ -23,15 +23,86 @@ function gameLabel(g) {
   return g.tableName ? `${g.tableName} · ${formatDate(g.endedAt)}` : formatDate(g.endedAt);
 }
 
-function Mine({ games, onOpenTable }) {
+// Two taps, so a stray tap doesn't hide a game.
+function HideButton({ onHide }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => (confirm ? onHide() : setConfirm(true))}
+      aria-label="הסתר מהסטטיסטיקה שלי"
+      className={`shrink-0 rounded-xl px-2.5 py-2 text-xs font-bold transition active:scale-95 ${
+        confirm ? 'bg-amber-300 text-slate-900' : 'bg-slate-950/50 text-slate-400'
+      }`}
+    >
+      {confirm ? 'להסתיר?' : '🙈'}
+    </button>
+  );
+}
+
+function HiddenLink({ count, onShowHidden }) {
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onShowHidden}
+      className="w-full rounded-2xl bg-slate-800/60 py-3 text-sm font-bold text-slate-300 active:scale-[0.98]"
+    >
+      🙈 משחקים מוסתרים ({count})
+    </button>
+  );
+}
+
+function Hidden({ hidden, onUnhide, onBack }) {
+  return (
+    <div className="space-y-3">
+      <button type="button" onClick={onBack} className="text-sm font-bold text-slate-400">
+        → חזרה לסטטיסטיקה
+      </button>
+      <h3 className="text-xl font-extrabold">משחקים מוסתרים 🙈</h3>
+      <p className="text-sm text-slate-400">
+        מוסתרים רק מהסטטיסטיקה שלך (גם מ״החבר׳ה שלי״). שום דבר לא נמחק, ולשאר השחקנים הם נשארים.
+      </p>
+      {hidden.length === 0 ? (
+        <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-slate-400">אין משחקים מוסתרים</p>
+      ) : (
+        <ul className="divide-y divide-white/5 rounded-3xl bg-slate-800/70 px-4">
+          {hidden.map((g) => (
+            <li key={g.tableId} className="flex items-center gap-3 py-3">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-bold">{g.tableName ?? 'שולחן בלי שם'}</span>
+                <span className="block text-xs text-slate-400">
+                  {g.status === 'ended' ? formatDate(g.endedAt) : 'עוד לא נסגר'}
+                  {g.net != null && g.status === 'ended' ? ` · ${signed(g.net)}` : ''}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onUnhide(g.tableId)}
+                className="shrink-0 rounded-xl bg-emerald-400 px-3 py-2 text-sm font-extrabold text-slate-900 active:scale-95"
+              >
+                הצג שוב
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function Mine({ games, hiddenCount, onOpenTable, onHide, onShowHidden }) {
   const s = useMemo(() => personalStats(games), [games]);
   if (s.count === 0) {
     return (
-      <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-slate-400">
-        עוד אין משחקים סגורים.
-        <br />
-        הסטטיסטיקה תופיע אחרי שמנהל השולחן יסגור שולחן 🔒
-      </p>
+      <div className="space-y-3">
+        <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-slate-400">
+          {hiddenCount > 0 ? 'כל המשחקים שלך מוסתרים.' : 'עוד אין משחקים סגורים.'}
+          <br />
+          {hiddenCount > 0 ? 'אפשר להחזיר אותם למטה' : 'הסטטיסטיקה תופיע אחרי שמנהל השולחן יסגור שולחן 🔒'}
+        </p>
+        <HiddenLink count={hiddenCount} onShowHidden={onShowHidden} />
+      </div>
     );
   }
   return (
@@ -79,8 +150,8 @@ function Mine({ games, onOpenTable }) {
         <h3 className="mb-2 text-sm font-medium text-slate-400">המשחקים שלי</h3>
         <ul className="divide-y divide-white/5 rounded-3xl bg-slate-800/70 px-4">
           {s.recent.map((g) => (
-            <li key={g.tableId}>
-              <button type="button" onClick={() => onOpenTable(g.tableId)} className="flex w-full items-center gap-3 py-3 text-start">
+            <li key={g.tableId} className="flex items-center gap-2">
+              <button type="button" onClick={() => onOpenTable(g.tableId)} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-start">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-bold">{g.tableName ?? 'שולחן בלי שם'}</span>
                   <span className="block text-xs text-slate-400">
@@ -89,10 +160,14 @@ function Mine({ games, onOpenTable }) {
                 </span>
                 <span className={`shrink-0 font-extrabold ${tone(g.net)}`}>{signed(g.net)}</span>
               </button>
+              <HideButton key={g.tableId} onHide={() => onHide(g.tableId)} />
             </li>
           ))}
         </ul>
+        <p className="mt-2 text-xs text-slate-500">🙈 מסתיר משחק (למשל משחק ניסיון) רק מהסטטיסטיקה שלך</p>
       </section>
+
+      <HiddenLink count={hiddenCount} onShowHidden={onShowHidden} />
     </div>
   );
 }
@@ -149,16 +224,43 @@ const TABS = [
 ];
 
 // Stats from closed online games the viewer played in. Only the viewer sees them.
-export default function StatsScreen({ onBack, onOpenTable, loader = loadStats }) {
+export default function StatsScreen({
+  onBack,
+  onOpenTable,
+  showToast = () => {},
+  loader = loadStats,
+  hide = hideGame,
+  unhide = unhideGame,
+}) {
   const [tab, setTab] = useState('mine');
+  const [showHidden, setShowHidden] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
+  const reload = useCallback(
+    () =>
+      loader()
+        .then((d) => {
+          setData(d);
+          setError(null);
+        })
+        .catch((e) => setError(e.message)),
+    [loader]
+  );
+
   useEffect(() => {
-    loader()
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [loader]);
+    reload();
+  }, [reload]);
+
+  async function run(fn, success) {
+    try {
+      await fn();
+      showToast(success);
+    } catch (e) {
+      showToast(`הפעולה נכשלה: ${e.message}`);
+    }
+    await reload();
+  }
 
   return (
     <div className="flex flex-1 flex-col">
@@ -182,8 +284,11 @@ export default function StatsScreen({ onBack, onOpenTable, loader = loadStats })
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-xl py-2.5 font-bold transition ${tab === t.id ? 'bg-slate-100 text-slate-900 shadow' : 'text-slate-400'}`}
+            onClick={() => {
+              setTab(t.id);
+              setShowHidden(false);
+            }}
+            className={`rounded-xl py-2.5 font-bold transition ${tab === t.id && !showHidden ? 'bg-slate-100 text-slate-900 shadow' : 'text-slate-400'}`}
           >
             {t.label}
           </button>
@@ -197,10 +302,27 @@ export default function StatsScreen({ onBack, onOpenTable, loader = loadStats })
           <div className="h-20 animate-pulse rounded-3xl bg-slate-800/60" />
           <div className="h-44 animate-pulse rounded-3xl bg-slate-800/60" />
         </div>
+      ) : showHidden ? (
+        <Hidden
+          hidden={data.hidden}
+          onBack={() => setShowHidden(false)}
+          onUnhide={(tableId) => run(() => unhide(tableId), 'המשחק חזר לסטטיסטיקה ✓')}
+        />
       ) : tab === 'mine' ? (
-        <Mine games={data.games} onOpenTable={onOpenTable} />
+        <Mine
+          games={data.games}
+          hiddenCount={data.hidden.length}
+          onOpenTable={onOpenTable}
+          onHide={(tableId) => run(() => hide(tableId), 'המשחק הוסתר מהסטטיסטיקה שלך 🙈')}
+          onShowHidden={() => setShowHidden(true)}
+        />
       ) : (
-        <Mates mates={data.mates} />
+        <>
+          <Mates mates={data.mates} />
+          {data.hidden.length > 0 && (
+            <p className="mt-3 text-xs text-slate-500">לא כולל {data.hidden.length === 1 ? 'משחק מוסתר אחד' : `${data.hidden.length} משחקים מוסתרים`}</p>
+          )}
+        </>
       )}
       {/* Keeps the last card off the bottom edge (iOS toolbar tint). */}
       <div className="h-6 shrink-0" />
