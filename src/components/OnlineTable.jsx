@@ -158,6 +158,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         players={view.players}
         entries={entries}
         tableName={view.name}
+        date={view.endedAt}
         notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
       >
         <button type="button" onClick={onHome} className={`${BIG_BUTTON} bg-slate-800 text-slate-100`}>

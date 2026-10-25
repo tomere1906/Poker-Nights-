@@ -165,6 +165,7 @@ export function toView(raw, userId) {
     managerName: table.manager?.display_name ?? 'מנהל השולחן',
     status: table.status,
     ended,
+    endedAt: table.ended_at ? Date.parse(table.ended_at) : null,
     started: table.status !== 'seating',
     endMode,
     finals: finalsFor(players, endMode),

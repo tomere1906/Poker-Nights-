@@ -1,35 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { settle } from '../lib/settlement.js';
-import { formatShekel } from '../lib/format.js';
+import { formatDate, formatShekel } from '../lib/format.js';
+import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
-
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // Clipboard API needs HTTPS; fall back for plain-http LAN use.
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
-  }
-}
-
-export function buildText(transfers, nets, nameOf, tableName = null) {
-  const lines = [tableName ? `🃏 ${tableName} – מי מעביר למי` : '🃏 Poker Nights – מי מעביר למי', ''];
-  if (transfers.length === 0) lines.push('כולם יצאו מאוזנים 🤝');
-  for (const t of transfers) lines.push(`${nameOf(t.from)} ← ${nameOf(t.to)}: ${formatShekel(t.amount)}`);
-  lines.push('', 'תוצאות:');
-  for (const e of [...nets].sort((a, b) => b.net - a.net)) {
-    lines.push(`${e.net > 0 ? '🟢' : e.net < 0 ? '🔴' : '⚪'} ${nameOf(e.id)}: ${formatShekel(e.net, { signed: true })}`);
-  }
-  return lines.join('\n');
-}
 
 // "משחק חדש" for the local table: wipes the game after a second tap.
 export function NewGameButton({ onNewGame }) {
@@ -48,18 +21,41 @@ export function NewGameButton({ onNewGame }) {
 }
 
 // Who pays whom. entries: [{ id, net }] (any numbers; settle() rounds and
-// balances them). children: extra buttons under "copy" (new game, close table…).
-export default function Settlement({ players, entries, tableName = null, notice = null, onBack, children }) {
-  const [copied, setCopied] = useState(false);
+// balances them). date: when the game ended (ms; default now).
+// children: extra buttons under "share" (new game, close table…).
+export default function Settlement({ players, entries, tableName = null, date = null, notice = null, onBack, children }) {
+  const [shareState, setShareState] = useState(null); // null | 'working' | 'downloaded' | 'error'
+  const [file, setFile] = useState(null);
+  const [now] = useState(() => Date.now());
+  const when = date ?? now;
 
-  const byId = new Map(players.map((p) => [p.id, p]));
+  const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
   const { nets, transfers } = useMemo(() => settle(entries), [entries]);
 
-  async function copy() {
-    if (await copyText(buildText(transfers, nets, nameOf, tableName))) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  // Prepare the image up front: iPhone Safari opens the share sheet only right
+  // after a tap, so the tap itself must not wait for drawing.
+  useEffect(() => {
+    let active = true;
+    setFile(null);
+    renderSettlementPng({ tableName, date: when, transfers, nets, players: byId })
+      .then((f) => active && setFile(f))
+      .catch(() => active && setFile(null));
+    return () => {
+      active = false;
+    };
+  }, [tableName, when, transfers, nets, byId]);
+
+  async function share() {
+    setShareState('working');
+    try {
+      const image = file ?? (await renderSettlementPng({ tableName, date: when, transfers, nets, players: byId }));
+      const result = await shareOrDownload(image);
+      setShareState(result === 'downloaded' ? 'downloaded' : null);
+      if (result === 'downloaded') setTimeout(() => setShareState(null), 2500);
+    } catch {
+      setShareState('error');
+      setTimeout(() => setShareState(null), 2500);
     }
   }
 
@@ -78,7 +74,7 @@ export default function Settlement({ players, entries, tableName = null, notice 
         )}
         <div className="min-w-0">
           <h2 className="text-2xl font-extrabold">מי מעביר למי 💸</h2>
-          {tableName && <p className="truncate text-sm text-slate-400">{tableName}</p>}
+          <p className="truncate text-sm text-slate-400">{[tableName, formatDate(when)].filter(Boolean).join(' · ')}</p>
         </div>
       </div>
 
@@ -130,10 +126,17 @@ export default function Settlement({ players, entries, tableName = null, notice 
       <div className="mt-auto space-y-2 pt-6">
         <button
           type="button"
-          onClick={copy}
-          className="w-full rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98]"
+          onClick={share}
+          disabled={shareState === 'working'}
+          className="w-full rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:opacity-70"
         >
-          {copied ? 'הועתק! ✓' : 'העתק לוואטסאפ 📋'}
+          {shareState === 'working'
+            ? 'מכין תמונה…'
+            : shareState === 'downloaded'
+              ? 'התמונה הורדה ✓'
+              : shareState === 'error'
+                ? 'לא הצלחנו – נסו שוב'
+                : 'שתף כתמונה 📸'}
         </button>
         {children}
       </div>
