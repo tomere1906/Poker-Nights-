@@ -2,7 +2,7 @@ import { describeLog } from '../lib/logText.js';
 import { formatTime } from '../lib/format.js';
 
 // The table's change log, newest first. Everyone at the table sees it.
-export default function TableLog({ entries, onBack }) {
+export default function TableLog({ entries, tableName = null, onBack }) {
   return (
     <div className="flex flex-1 flex-col">
       <div className="mb-4 flex items-center gap-3">
@@ -16,7 +16,9 @@ export default function TableLog({ entries, onBack }) {
         </button>
         <div>
           <h2 className="text-2xl font-extrabold">יומן השולחן 📜</h2>
-          <p className="text-sm text-slate-400">מי שינה מה ומתי · כולם בשולחן רואים</p>
+          <p className="text-sm text-slate-400">
+            {tableName ? `${tableName} · ` : ''}מי שינה מה ומתי · כולם בשולחן רואים
+          </p>
         </div>
       </div>
 

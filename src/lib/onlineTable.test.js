@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 // toView is pure; keep the Supabase client out of the test.
 vi.mock('./supabase.js', () => ({ supabase: null, isSupabaseConfigured: false }));
-const { toView } = await import('./onlineTable.js');
+const { toView, finalsFor, toChips, cleanTableName } = await import('./onlineTable.js');
 
 const M = 'manager-id';
 const P = 'player-id';
@@ -65,5 +65,43 @@ describe('toView', () => {
     expect(v.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100] });
     expect(v.started).toBe(false);
     expect(toView(raw({ table: { ...raw().table, status: 'playing' } }), M).started).toBe(true);
+  });
+});
+
+describe('online results and exits', () => {
+  const withResults = () =>
+    raw({
+      table: { ...raw().table, status: 'playing', name: 'שישי אצל אסף', end_mode: 'net' },
+      players: [
+        { id: 'p-user', user_id: P, nickname: null, color: null, seat: 0, out_kind: 'amount', out_chips: 120, final_value: null, profile: { display_name: 'אסף', color: 1 } },
+        { id: 'p-guest', user_id: null, nickname: 'אורח', color: 5, seat: 1, out_kind: null, out_chips: null, final_value: 0, profile: null },
+      ],
+    });
+
+  it('maps the table name and the exits', () => {
+    const v = toView(withResults(), M);
+    expect(v.name).toBe('שישי אצל אסף');
+    expect(v.players.find((p) => p.id === 'p-user').out).toEqual({ kind: 'amount', chips: 120 });
+    expect(v.players.find((p) => p.id === 'p-guest').out).toBeNull();
+  });
+
+  it('prefills results from the exit amount, in the end mode\'s terms', () => {
+    const v = toView(withResults(), M);
+    // p-user put in 90 and left with 120; the guest put in 30 and left with 0.
+    expect(v.finals).toEqual({ 'p-user': 30, 'p-guest': -30 });
+    expect(finalsFor(v.players, 'chips')).toEqual({ 'p-user': 120, 'p-guest': 0 });
+  });
+
+  it('stores results as chips whatever the input mode', () => {
+    const player = toView(withResults(), M).players.find((p) => p.id === 'p-user');
+    expect(toChips(player, 30, 'net')).toBe(120);
+    expect(toChips(player, 120, 'chips')).toBe(120);
+    expect(toChips(player, null, 'net')).toBeNull();
+  });
+
+  it('cleans the optional table name', () => {
+    expect(cleanTableName('  שישי  ')).toBe('שישי');
+    expect(cleanTableName('   ')).toBeNull();
+    expect(cleanTableName('א'.repeat(40))).toHaveLength(30);
   });
 });

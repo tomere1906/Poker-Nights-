@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { settle } from '../lib/settlement.js';
-import { netOf } from '../lib/game.js';
 import { formatShekel } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
 
@@ -21,8 +20,8 @@ async function copyText(text) {
   }
 }
 
-function buildText(transfers, nets, nameOf) {
-  const lines = ['🃏 Poker Nights – מי מעביר למי', ''];
+export function buildText(transfers, nets, nameOf, tableName = null) {
+  const lines = [tableName ? `🃏 ${tableName} – מי מעביר למי` : '🃏 Poker Nights – מי מעביר למי', ''];
   if (transfers.length === 0) lines.push('כולם יצאו מאוזנים 🤝');
   for (const t of transfers) lines.push(`${nameOf(t.from)} ← ${nameOf(t.to)}: ${formatShekel(t.amount)}`);
   lines.push('', 'תוצאות:');
@@ -32,20 +31,33 @@ function buildText(transfers, nets, nameOf) {
   return lines.join('\n');
 }
 
-export default function Settlement({ state, onBack, onNewGame }) {
-  const [copied, setCopied] = useState(false);
-  const [confirmNew, setConfirmNew] = useState(false);
-
-  const { players } = state;
-  const byId = new Map(players.map((p) => [p.id, p]));
-  const nameOf = (id) => byId.get(id).name;
-  const { nets, transfers } = useMemo(
-    () => settle(players.map((p) => ({ id: p.id, net: netOf(state, p) ?? 0 }))),
-    [state]
+// "משחק חדש" for the local table: wipes the game after a second tap.
+export function NewGameButton({ onNewGame }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => (confirm ? onNewGame() : setConfirm(true))}
+      className={`w-full rounded-2xl py-3.5 font-bold transition active:scale-[0.98] ${
+        confirm ? 'bg-rose-500 text-white' : 'bg-slate-800 text-slate-200'
+      }`}
+    >
+      {confirm ? 'בטוח? כל הנתונים יימחקו – הקש שוב' : 'משחק חדש 🃏'}
+    </button>
   );
+}
+
+// Who pays whom. entries: [{ id, net }] (any numbers; settle() rounds and
+// balances them). children: extra buttons under "copy" (new game, close table…).
+export default function Settlement({ players, entries, tableName = null, notice = null, onBack, children }) {
+  const [copied, setCopied] = useState(false);
+
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
+  const { nets, transfers } = useMemo(() => settle(entries), [entries]);
 
   async function copy() {
-    if (await copyText(buildText(transfers, nets, nameOf))) {
+    if (await copyText(buildText(transfers, nets, nameOf, tableName))) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -54,16 +66,23 @@ export default function Settlement({ state, onBack, onNewGame }) {
   return (
     <div className="flex flex-1 flex-col">
       <div className="mb-4 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="חזרה"
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800 text-xl active:scale-90"
-        >
-          →
-        </button>
-        <h2 className="text-2xl font-extrabold">מי מעביר למי 💸</h2>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="חזרה"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xl active:scale-90"
+          >
+            →
+          </button>
+        )}
+        <div className="min-w-0">
+          <h2 className="text-2xl font-extrabold">מי מעביר למי 💸</h2>
+          {tableName && <p className="truncate text-sm text-slate-400">{tableName}</p>}
+        </div>
       </div>
+
+      {notice}
 
       {transfers.length === 0 ? (
         <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-lg">כולם יצאו מאוזנים 🤝</p>
@@ -116,15 +135,7 @@ export default function Settlement({ state, onBack, onNewGame }) {
         >
           {copied ? 'הועתק! ✓' : 'העתק לוואטסאפ 📋'}
         </button>
-        <button
-          type="button"
-          onClick={() => (confirmNew ? onNewGame() : setConfirmNew(true))}
-          className={`w-full rounded-2xl py-3.5 font-bold transition active:scale-[0.98] ${
-            confirmNew ? 'bg-rose-500 text-white' : 'bg-slate-800 text-slate-200'
-          }`}
-        >
-          {confirmNew ? 'בטוח? כל הנתונים יימחקו – הקש שוב' : 'משחק חדש 🃏'}
-        </button>
+        {children}
       </div>
     </div>
   );

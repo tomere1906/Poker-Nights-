@@ -50,6 +50,7 @@ function OnlineSection({ auth, onContinueOnline, onNewOnline }) {
             <button type="button" onClick={() => onContinueOnline(latest.id)} className={PRIMARY}>
               חזרה לשולחן האונליין 🌐
               <span className="mt-0.5 block text-sm font-medium text-slate-800">
+                {latest.name ? `${latest.name} · ` : ''}
                 {latest.table_players?.[0]?.count ?? 0} שחקנים · {latest.status === 'seating' ? 'בהושבה' : 'במשחק'}
               </span>
             </button>

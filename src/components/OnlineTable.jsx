@@ -1,18 +1,94 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { netOf } from '../lib/game.js';
 import { inviteLink, useOnlineTable } from '../lib/onlineTable.js';
-import InviteSheet from './InviteSheet.jsx';
+import InviteSheet, { inviteMessage } from './InviteSheet.jsx';
 import TableScreen from './TableScreen.jsx';
 import TableLog from './TableLog.jsx';
 import TableManageSheet from './TableManageSheet.jsx';
+import OnlineEndGame from './OnlineEndGame.jsx';
+import Settlement from './Settlement.jsx';
+import { settle } from '../lib/settlement.js';
 import { CardsIcon } from './Icons.jsx';
 
 const HEADER_BUTTON = 'rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 active:scale-95';
+const BIG_BUTTON = 'w-full rounded-2xl py-4 text-lg font-extrabold transition active:scale-[0.98]';
 
-// An online table. The manager/co-managers run it; players watch it (and in
-// "כל אחד את שלו" mode add buy-ins for themselves).
-export default function OnlineTable({ tableId, userId, onHome, showToast }) {
+// Closing the table: the manager taps twice. Co-managers see who closes it.
+function CloseTableButton({ isManager, missing, onClose }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!isManager) {
+    return <p className="rounded-2xl bg-slate-800/70 py-3 text-center text-sm text-slate-400">רק מנהל השולחן סוגר את השולחן 🔒</p>;
+  }
+  return (
+    <button
+      type="button"
+      disabled={missing > 0 || busy}
+      onClick={async () => {
+        if (!confirm) return setConfirm(true);
+        setBusy(true);
+        try {
+          await onClose();
+        } finally {
+          setBusy(false);
+          setConfirm(false);
+        }
+      }}
+      className={`${BIG_BUTTON} ${
+        confirm ? 'bg-amber-300 text-slate-900' : 'bg-slate-800 text-slate-100'
+      } disabled:bg-slate-800 disabled:text-slate-500`}
+    >
+      {missing > 0
+        ? 'יש שחקנים בלי תוצאה'
+        : busy
+          ? 'סוגר…'
+          : confirm
+            ? 'בטוח? התוצאות יינעלו לכולם – הקש שוב'
+            : 'סגור את השולחן 🔒'}
+    </button>
+  );
+}
+
+function ReopenButton({ onReopen }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => (confirm ? onReopen() : setConfirm(true))}
+      className={`w-full rounded-2xl py-3 text-sm font-bold transition active:scale-[0.98] ${
+        confirm ? 'bg-amber-300 text-slate-900' : 'bg-slate-900 text-slate-400'
+      }`}
+    >
+      {confirm ? 'לפתוח מחדש לתיקונים? הקש שוב' : 'פתח מחדש לתיקונים'}
+    </button>
+  );
+}
+
+// An online table. The manager/co-managers run it; players watch it live (and
+// in "כל אחד את שלו" mode add buy-ins for themselves). At the end: managers
+// enter results, the manager closes the table, everyone sees who pays whom.
+export default function OnlineTable({ tableId, userId, onHome, showToast, onCelebrate }) {
   const { view, error, loading, live, actions } = useOnlineTable(tableId, userId);
-  const [panel, setPanel] = useState(null); // null | 'log' | 'manage'
+  const [panel, setPanel] = useState(null); // null | 'log' | 'manage' | 'invite'
+  const [step, setStep] = useState('table'); // 'table' | 'end' | 'settle' (managers, before closing)
+  const fail = (e) => showToast(`הפעולה נכשלה: ${e.message ?? e}`);
+
+  // Confetti for everyone at the table when the manager closes it.
+  const wasEnded = useRef(null);
+  useEffect(() => {
+    if (!view) return;
+    if (wasEnded.current === false && view.ended) onCelebrate?.();
+    wasEnded.current = view.ended;
+    if (view.ended) setStep('table');
+  }, [view, onCelebrate]);
+
+  // Before closing: results as typed. After: the stored, settled results.
+  const entries = useMemo(() => {
+    if (!view) return [];
+    return view.ended
+      ? view.players.map((p) => ({ id: p.id, net: p.finalNet ?? 0 }))
+      : view.players.map((p) => ({ id: p.id, net: netOf(view, p) ?? 0 }));
+  }, [view]);
 
   const header = (
     <header className="mb-2 flex items-center gap-2">
@@ -29,7 +105,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast }) {
       </span>
       {view && (
         <div className="ms-auto flex gap-2">
-          {view.canManage && view.status !== 'ended' && (
+          {view.canManage && !view.ended && (
             <button type="button" onClick={() => setPanel('invite')} className={HEADER_BUTTON}>
               💌 הזמן
             </button>
@@ -69,18 +145,62 @@ export default function OnlineTable({ tableId, userId, onHome, showToast }) {
     );
   }
 
-  if (panel === 'log') return <TableLog entries={view.log} onBack={() => setPanel(null)} />;
+  if (panel === 'log') return <TableLog entries={view.log} tableName={view.name} onBack={() => setPanel(null)} />;
 
   const mine = (player) => player.userId === userId;
-  const canSelfAdd = (player) => view.buyInMode === 'self_add' && view.status !== 'ended' && mine(player);
+  const canSelfAdd = (player) => view.buyInMode === 'self_add' && !view.ended && mine(player);
+  const missing = view.players.filter((p) => !(p.id in view.finals)).length;
 
-  return (
-    <>
-      {header}
+  let body;
+  if (view.ended) {
+    body = (
+      <Settlement
+        players={view.players}
+        entries={entries}
+        tableName={view.name}
+        notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
+      >
+        <button type="button" onClick={onHome} className={`${BIG_BUTTON} bg-slate-800 text-slate-100`}>
+          חזרה למסך הבית
+        </button>
+        {view.isManager && <ReopenButton onReopen={() => actions.reopen().catch(fail)} />}
+      </Settlement>
+    );
+  } else if (step === 'end' && view.canManage) {
+    body = (
+      <OnlineEndGame
+        view={view}
+        actions={actions}
+        onBack={() => setStep('table')}
+        onSettle={() => setStep('settle')}
+        onError={(message) => showToast(`השמירה נכשלה: ${message}`)}
+      />
+    );
+  } else if (step === 'settle' && view.canManage) {
+    body = (
+      <Settlement players={view.players} entries={entries} tableName={view.name} onBack={() => setStep('end')}>
+        <CloseTableButton
+          isManager={view.isManager}
+          missing={missing}
+          onClose={async () => {
+            try {
+              // The same whole-shekel results everyone will see; the database checks they add up to 0.
+              await actions.endGame(settle(entries).nets);
+              showToast('השולחן נסגר – התוצאות נשמרו 🎉');
+            } catch (e) {
+              fail(e);
+            }
+          }}
+        />
+      </Settlement>
+    );
+  } else {
+    body = (
       <TableScreen
         players={view.players}
         started={view.started}
         settings={view.settings}
+        tableName={view.name}
         canManage={view.canManage}
         canSelfAdd={canSelfAdd}
         people={view.unseated}
@@ -90,12 +210,27 @@ export default function OnlineTable({ tableId, userId, onHome, showToast }) {
         onRemove={actions.remove}
         onMove={actions.move}
         onStart={actions.start}
-        onEnd={null}
+        onEnd={view.canManage ? () => setStep('end') : null}
         onEditIdentity={actions.setIdentity}
         onSeatSelf={view.canSeatSelf ? actions.seatSelf : undefined}
+        onMarkOut={actions.markOut}
+        onMarkBack={actions.markBack}
         showToast={showToast}
       />
-      {panel === 'invite' && <InviteSheet link={inviteLink(view)} onClose={() => setPanel(null)} />}
+    );
+  }
+
+  return (
+    <>
+      {header}
+      {body}
+      {panel === 'invite' && (
+        <InviteSheet
+          link={inviteLink(view)}
+          message={inviteMessage(inviteLink(view), { managerName: view.managerName, tableName: view.name })}
+          onClose={() => setPanel(null)}
+        />
+      )}
       {panel === 'manage' && (
         <TableManageSheet
           view={view}

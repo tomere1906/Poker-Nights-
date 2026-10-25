@@ -27,3 +27,17 @@ describe('describeLog', () => {
     expect(say('game_ended', {}, null)).toBe('המערכת סיים את המשחק');
   });
 });
+
+describe('describeLog: exits and table names', () => {
+  it('describes exits with the end-game labels', () => {
+    expect(say('player_out', { name: 'עידו', kind: 'lost_all', chips: 0 }, 'תומר')).toBe('תומר סימן שעידו יצא: הפסיד הכל 💀');
+    expect(say('player_out', { name: 'עידו', kind: 'even', chips: 100 }, 'תומר')).toBe('תומר סימן שעידו יצא: מאוזן 🤝');
+    expect(say('player_out', { name: 'עידו', kind: 'amount', chips: 80 }, 'תומר')).toBe('תומר סימן שעידו יצא עם 80 ₪ 💰');
+    expect(say('player_back', { name: 'עידו' }, 'תומר')).toBe('תומר החזיר את עידו למשחק');
+  });
+
+  it('describes table renames', () => {
+    expect(say('table_renamed', { old: null, new: 'שישי אצל אסף' }, 'תומר')).toBe('תומר קרא לשולחן ״שישי אצל אסף״');
+    expect(say('table_renamed', { old: 'שישי', new: null }, 'תומר')).toBe('תומר הסיר את שם השולחן');
+  });
+});

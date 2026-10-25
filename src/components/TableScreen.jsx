@@ -28,6 +28,9 @@ export default function TableScreen({
   onEnd,
   onEditIdentity,
   onSeatSelf,
+  onMarkOut,
+  onMarkBack,
+  tableName = null,
   showToast,
 }) {
   // { type: 'add', seat | position } | { type: 'player', id } | { type: 'seat-self', seat }
@@ -59,6 +62,7 @@ export default function TableScreen({
         <PokerTable
           players={players}
           started={started}
+          name={tableName}
           placing={placing}
           onPlace={(position) => {
             setPlacing(false);
@@ -194,6 +198,20 @@ export default function TableScreen({
             close();
             act(() => onRemove(activePlayer));
           }}
+          // Leaving mid-game only makes sense once the game is on.
+          onMarkOut={
+            started && onMarkOut
+              ? (kind, amount) => {
+                  close();
+                  act(() => onMarkOut(activePlayer, kind, amount), `${activePlayer.name} יצא מהמשחק`);
+                }
+              : undefined
+          }
+          onMarkBack={
+            onMarkBack &&
+            // The sheet stays open: a re-buy usually comes right after.
+            (() => act(() => onMarkBack(activePlayer), `${activePlayer.name} חזר לשחק 🎉`))
+          }
           onEditIdentity={
             onEditIdentity &&
             ((identity) => {

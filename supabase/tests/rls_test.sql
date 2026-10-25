@@ -8,6 +8,7 @@
 -- Users:  M = manager of T1 and T3 · P = player in T1, T2, T3 · S = stranger · Q = manager of T2
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
+--         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -104,9 +105,6 @@ begin
       (62, 'M cannot see Q''s profile (never met)',    'M', $$select count(*) from public.profiles where id = '44444444-4444-4444-8444-444444444444'$$, 'count:0'),
       (63, 'Q cannot see T1 buy-ins via P',            'Q', $$select count(*) from public.buy_ins where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'count:0'),
 
-      -- ---------------- invites stop working once the game ended ----------------
-      (70, 'M ends T1',                                'M', $$update public.poker_tables set status = 'ended', ended_at = now() where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:1'),
-      (71, 'S cannot join an ended table',             'S', $$insert into public.table_members (table_id, invite_code) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'code-t1')$$, 'deny'),
 
       -- ---------------- signed-out visitors (anon) get nothing ----------------
       (80, 'Anon cannot read tables',                  'anon', $$select count(*) from public.poker_tables$$, 'deny'),
@@ -141,6 +139,18 @@ begin
       (128, 'Guest without a name is rejected',          'Q', $$insert into public.table_players (table_id, color, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 2, 5)$$, 'error:23514'),
       (129, 'Per-table color outside the palette is rejected', 'Q', $$update public.table_players set color = 12 where id = 'b0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
 
+      -- ---------------- an ended table: invites stop, everything is locked ----------------
+      (130, 'M ends T1 (balanced results)',              'M', $$select public.end_game('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '{"a0000000-0000-4000-8000-000000000001": 30, "a0000000-0000-4000-8000-000000000002": 20, "a0000000-0000-4000-8000-000000000003": -50}')$$, 'ok'),
+      (131, 'S cannot join an ended table',              'S', $$insert into public.table_members (table_id, invite_code) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'code-t1')$$, 'deny'),
+      (132, 'M cannot add a buy-in after the end',       'M', $$insert into public.buy_ins (table_id, player_id, amount) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
+      (133, 'M cannot change a buy-in after the end',    'M', $$update public.buy_ins set amount = 1 where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
+      (134, 'M cannot change a result after the end',    'M', $$update public.table_players set final_net = 999 where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
+      (135, 'M cannot seat a guest after the end',       'M', $$insert into public.table_players (table_id, nickname, color, seat) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'מאחר', 1, 5)$$, 'deny'),
+      (136, 'M cannot remove a player after the end',    'M', $$delete from public.table_players where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:0'),
+      (137, 'M cannot change amounts after the end',     'M', $$update public.poker_tables set initial_buy_in = 1 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
+      (138, 'The settled results are stored and balance', 'P', $$select count(*) from public.table_players where table_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' having sum(final_net) = 0 and count(final_net) = 3$$, 'count:3'),
+      (139, 'M can still rename the ended table',        'M', $$update public.poker_tables set name = 'ערב ראשון' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'rows:1'),
+
       -- ---------------- co-managers (table T3) ----------------
       (140, 'M opens table T3',                          'M', $$insert into public.poker_tables (id, invite_code) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'code-t3')$$, 'ok'),
       (141, 'P joins T3',                                'P', $$insert into public.table_members (table_id, invite_code) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'code-t3')$$, 'ok'),
@@ -173,11 +183,16 @@ begin
       (166, 'P cannot delete his own buy-in',            'P', $$delete from public.buy_ins where id = 'd0000000-0000-4000-8000-000000000001'$$, 'rows:0'),
       (167, 'P cannot record his buy-in as the manager', 'P', $$insert into public.buy_ins (table_id, player_id, amount, created_by) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50, '11111111-1111-4111-8111-111111111111')$$, 'deny'),
       (168, 'S cannot add buy-ins even in self-add mode', 'S', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
+      (169, 'Co-manager C cannot end via end_game',      'C', $$select public.end_game('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '{"c0000000-0000-4000-8000-000000000001": 10, "c0000000-0000-4000-8000-000000000002": 20, "c0000000-0000-4000-8000-000000000003": -30, "c0000000-0000-4000-8000-000000000004": 0}')$$, 'deny'),
 
       -- ---------------- removing a co-manager ----------------
       (170, 'M removes C as co-manager',                 'M', $$update public.table_members set is_co_manager = false where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and user_id = '55555555-5555-4555-8555-555555555555'$$, 'rows:1'),
       (171, 'C can no longer add buy-ins for others',    'C', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000002', 50)$$, 'deny'),
       (172, 'C can no longer rename players',            'C', $$update public.table_players set nickname = 'x' where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:0'),
+      (173, '…and C''s end_game attempt wrote nothing',   'M', $$select count(*) from public.table_players where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and final_net is not null$$, 'count:0'),
+      (174, 'M cannot end with results that don''t add up', 'M', $$select public.end_game('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '{"c0000000-0000-4000-8000-000000000001": 10, "c0000000-0000-4000-8000-000000000002": 20, "c0000000-0000-4000-8000-000000000003": -30, "c0000000-0000-4000-8000-000000000004": 5}')$$, 'error:23514'),
+      (175, 'M cannot end with a player missing',        'M', $$select public.end_game('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '{"c0000000-0000-4000-8000-000000000001": 10, "c0000000-0000-4000-8000-000000000002": 20, "c0000000-0000-4000-8000-000000000003": -30}')$$, 'error:23514'),
+      (176, 'Plain status=ended without results is rejected', 'M', $$update public.poker_tables set status = 'ended' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'error:23514'),
 
       -- ---------------- change log ----------------
       (180, 'Log: P''s self-added buy-in, by P',         'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and action = 'buy_in_added' and actor_id = '22222222-2222-4222-8222-222222222222' and details ->> 'self' = 'true' and (details ->> 'amount')::int = 50$$, 'count:1'),
@@ -190,7 +205,7 @@ begin
       (187, 'The manager cannot edit the log',           'M', $$update public.table_log set action = 'fake' where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'deny'),
       (188, 'The manager cannot delete from the log',    'M', $$delete from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'deny'),
       (189, 'Anon cannot read the log',                  'anon', $$select count(*) from public.table_log$$, 'deny'),
-      (190, 'M ends T3',                                 'M', $$update public.poker_tables set status = 'ended' where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:1'),
+      (190, 'M ends T3',                                 'M', $$select public.end_game('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '{"c0000000-0000-4000-8000-000000000001": 10, "c0000000-0000-4000-8000-000000000002": 20, "c0000000-0000-4000-8000-000000000003": -30, "c0000000-0000-4000-8000-000000000004": 0}')$$, 'ok'),
       (191, 'P cannot self-add after the game ended',    'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'c0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
       (192, 'Log: M ended the game',                     'P', $$select count(*) from public.table_log where table_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' and action = 'game_ended' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
       (193, 'M can still delete the table (log cascades)', 'M', $$delete from public.poker_tables where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$, 'rows:1'),
@@ -221,8 +236,66 @@ begin
       (220, 'Two players can never share a seat',          'M', $$update public.table_players set seat = 0 where id = 'e0000000-0000-4000-8000-000000000001'$$, 'error:23505'),
       (221, 'Anon cannot call swap_seats',                 'anon', $$select public.swap_seats('e0000000-0000-4000-8000-000000000002', 5)$$, 'deny'),
       (222, 'Log: P seated himself',                       'M', $$select count(*) from public.table_log where table_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' and action = 'player_seated' and actor_id = '22222222-2222-4222-8222-222222222222'$$, 'count:1'),
-      (223, 'M ends T4',                                   'M', $$update public.poker_tables set status = 'ended' where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'$$, 'rows:1'),
+      (223, 'M ends T4',                                   'M', $$select public.end_game('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '{"e0000000-0000-4000-8000-000000000001": 10, "e0000000-0000-4000-8000-000000000002": -10}')$$, 'ok'),
       (224, 'Q cannot take a seat after the game ended',   'Q', $$insert into public.table_players (table_id, user_id, seat) values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '44444444-4444-4444-8444-444444444444', 6)$$, 'deny'),
+
+      -- ---------------- table name (T5) ----------------
+      (230, 'M opens T5 with a name',                      'M', $$insert into public.poker_tables (id, invite_code, name) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'code-t5', 'שישי אצל אסף')$$, 'ok'),
+      (231, 'P joins T5',                                  'P', $$insert into public.table_members (table_id, invite_code) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'code-t5')$$, 'ok'),
+      (232, 'C joins T5',                                  'C', $$insert into public.table_members (table_id, invite_code) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'code-t5')$$, 'ok'),
+      (233, 'M appoints C as co-manager of T5',            'M', $$update public.table_members set is_co_manager = true where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and user_id = '55555555-5555-4555-8555-555555555555'$$, 'rows:1'),
+      (234, 'M seats M, P and a guest in T5',              'M', $$insert into public.table_players (id, table_id, user_id, nickname, color, seat) values ('f0000000-0000-4000-8000-000000000001', 'ffffffff-ffff-4fff-8fff-ffffffffffff', '11111111-1111-4111-8111-111111111111', null, null, 0), ('f0000000-0000-4000-8000-000000000002', 'ffffffff-ffff-4fff-8fff-ffffffffffff', '22222222-2222-4222-8222-222222222222', null, null, 1), ('f0000000-0000-4000-8000-000000000003', 'ffffffff-ffff-4fff-8fff-ffffffffffff', null, 'אורח', 2, 2)$$, 'ok'),
+      (235, 'M adds buy-ins in T5',                        'M', $$insert into public.buy_ins (table_id, player_id, amount) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000001', 100), ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000002', 50), ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000003', 50)$$, 'ok'),
+      (236, 'P sees the table name',                       'P', $$select count(*) from public.poker_tables where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and name = 'שישי אצל אסף'$$, 'count:1'),
+      (237, 'M renames T5',                                'M', $$update public.poker_tables set name = 'שישי אצל תומר' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:1'),
+      (238, 'Co-manager C cannot rename the table',        'C', $$update public.poker_tables set name = 'של C' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'deny'),
+      (239, 'P cannot rename the table',                   'P', $$update public.poker_tables set name = 'של P' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:0'),
+      (240, 'A name over 30 characters is rejected',       'M', $$update public.poker_tables set name = repeat('א', 31) where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'error:23514'),
+      (241, 'A blank name is rejected',                    'M', $$update public.poker_tables set name = '   ' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'error:23514'),
+      (242, 'M removes the name (optional)',               'M', $$update public.poker_tables set name = null where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:1'),
+      (243, 'M names it again',                            'M', $$update public.poker_tables set name = 'שישי' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:1'),
+      (244, 'Log: 3 renames, all by M',                    'P', $$select count(*) from public.table_log where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and action = 'table_renamed' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:3'),
+      (245, 'S cannot see the table or its name',          'S', $$select count(*) from public.poker_tables where name is not null$$, 'count:0'),
+
+      -- ---------------- players leaving mid-game (T5) ----------------
+      (250, 'M starts T5',                                 'M', $$update public.poker_tables set status = 'playing' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:1'),
+      (251, 'Co-manager C marks the guest out: lost all',  'C', $$update public.table_players set out_kind = 'lost_all', out_chips = 0 where id = 'f0000000-0000-4000-8000-000000000003'$$, 'rows:1'),
+      (252, '"Lost all" with chips left is rejected',      'M', $$update public.table_players set out_chips = 5 where id = 'f0000000-0000-4000-8000-000000000003'$$, 'error:23514'),
+      (253, 'An exit without an amount is rejected',       'M', $$update public.table_players set out_kind = 'amount' where id = 'f0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
+      (254, 'A negative exit amount is rejected',          'M', $$update public.table_players set out_kind = 'amount', out_chips = -1 where id = 'f0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
+      (255, 'An unknown exit kind is rejected',            'M', $$update public.table_players set out_kind = 'flew', out_chips = 1 where id = 'f0000000-0000-4000-8000-000000000002'$$, 'error:23514'),
+      (256, 'P cannot mark himself out',                   'P', $$update public.table_players set out_kind = 'even', out_chips = 50 where id = 'f0000000-0000-4000-8000-000000000002'$$, 'rows:0'),
+      (257, 'P cannot bring the guest back',               'P', $$update public.table_players set out_kind = null, out_chips = null where id = 'f0000000-0000-4000-8000-000000000003'$$, 'rows:0'),
+      (258, 'No buy-ins for a player who is out',          'M', $$insert into public.buy_ins (table_id, player_id, amount) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000003', 50)$$, 'deny'),
+      (259, 'M marks P out with an amount (80)',           'M', $$update public.table_players set out_kind = 'amount', out_chips = 80 where id = 'f0000000-0000-4000-8000-000000000002'$$, 'rows:1'),
+      (260, 'P sees his exit and amount',                  'P', $$select count(*) from public.table_players where id = 'f0000000-0000-4000-8000-000000000002' and out_kind = 'amount' and out_chips = 80$$, 'count:1'),
+      (261, 'M switches T5 to self-add',                   'M', $$update public.poker_tables set buy_in_mode = 'self_add' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:1'),
+      (262, 'P cannot self-add while out',                 'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000002', 50)$$, 'deny'),
+      (263, 'C brings the guest back ("חזר לשחק")',        'C', $$update public.table_players set out_kind = null, out_chips = null where id = 'f0000000-0000-4000-8000-000000000003'$$, 'rows:1'),
+      (264, '…and adds a re-buy for the guest',            'C', $$insert into public.buy_ins (table_id, player_id, amount) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000003', 50)$$, 'ok'),
+      (265, 'Log: 2 exits and 1 return',                   'P', $$select count(*) from public.table_log where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and ((action = 'player_out' and details ->> 'kind' in ('lost_all', 'amount')) or action = 'player_back')$$, 'count:3'),
+      (266, 'Log: the exit amount is recorded',            'P', $$select count(*) from public.table_log where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and action = 'player_out' and (details ->> 'chips')::int = 80 and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
+
+      -- ---------------- ending the game online (T5) ----------------
+      (270, 'Co-manager C enters the guest''s final chips', 'C', $$update public.table_players set final_value = 120 where id = 'f0000000-0000-4000-8000-000000000003'$$, 'rows:1'),
+      (271, 'P cannot enter results',                      'P', $$update public.table_players set final_value = 500 where id = 'f0000000-0000-4000-8000-000000000002'$$, 'rows:0'),
+      (272, 'S cannot end T5',                             'S', $$select public.end_game('ffffffff-ffff-4fff-8fff-ffffffffffff', '{"f0000000-0000-4000-8000-000000000001": -50, "f0000000-0000-4000-8000-000000000002": 30, "f0000000-0000-4000-8000-000000000003": 20}')$$, 'deny'),
+      (273, 'Anon cannot call end_game',                   'anon', $$select public.end_game('ffffffff-ffff-4fff-8fff-ffffffffffff', '{}')$$, 'deny'),
+      (274, 'Fractional results are rejected',             'M', $$select public.end_game('ffffffff-ffff-4fff-8fff-ffffffffffff', '{"f0000000-0000-4000-8000-000000000001": -50.5, "f0000000-0000-4000-8000-000000000002": 30.5, "f0000000-0000-4000-8000-000000000003": 20}')$$, 'error:22P02'),
+      (275, 'M ends T5',                                   'M', $$select public.end_game('ffffffff-ffff-4fff-8fff-ffffffffffff', '{"f0000000-0000-4000-8000-000000000001": -50, "f0000000-0000-4000-8000-000000000002": 30, "f0000000-0000-4000-8000-000000000003": 20}')$$, 'ok'),
+      (276, '…T5 is ended, with the time',                 'P', $$select count(*) from public.poker_tables where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and status = 'ended' and ended_at is not null$$, 'count:1'),
+      (277, '…every player''s net is stored',              'P', $$select count(*) from public.table_players where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and final_net is not null$$, 'count:3'),
+      (278, '…and P sees his own result (+30)',            'P', $$select count(*) from public.table_players where id = 'f0000000-0000-4000-8000-000000000002' and final_net = 30$$, 'count:1'),
+      (279, 'Log: M ended T5',                             'P', $$select count(*) from public.table_log where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and action = 'game_ended' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
+      (280, 'C cannot mark anyone out after the end',      'C', $$update public.table_players set out_kind = 'even', out_chips = 100 where id = 'f0000000-0000-4000-8000-000000000001'$$, 'rows:0'),
+      (281, 'C cannot change results after the end',       'C', $$update public.table_players set final_net = 0 where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:0'),
+      (282, 'C cannot delete buy-ins after the end',       'C', $$delete from public.buy_ins where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:0'),
+      (283, 'P cannot self-add after the end',             'P', $$insert into public.buy_ins (table_id, player_id, amount) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000001', 50)$$, 'deny'),
+      (284, 'C cannot reopen the game',                    'C', $$update public.poker_tables set status = 'playing' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'deny'),
+      (285, 'M reopens the game',                          'M', $$update public.poker_tables set status = 'playing' where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$, 'rows:1'),
+      (286, '…ended_at is cleared',                        'M', $$select count(*) from public.poker_tables where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and ended_at is null$$, 'count:1'),
+      (287, '…and buy-ins work again',                     'M', $$insert into public.buy_ins (table_id, player_id, amount) values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'f0000000-0000-4000-8000-000000000001', 50)$$, 'ok'),
+      (288, 'Log: started + reopened, both by M',          'P', $$select count(*) from public.table_log where table_id = 'ffffffff-ffff-4fff-8fff-ffffffffffff' and action = 'game_started' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:2'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 6 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log') and rowsecurity$$, 'count:6'),

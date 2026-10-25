@@ -11,7 +11,7 @@ export default function Seat({ player, style, dimmed, highlighted, dragHandlers 
       {...dragHandlers}
       className={`absolute flex w-[76px] -translate-x-1/2 -translate-y-1/2 cursor-grab select-none flex-col items-center transition-[scale,opacity,filter] ${
         highlighted ? 'scale-110 drop-shadow-[0_0_12px_rgba(252,211,77,0.9)]' : ''
-      } ${dimmed ? 'opacity-30' : ''}`}
+      } ${dimmed ? 'opacity-30' : player.out ? 'opacity-50 grayscale-[40%]' : ''}`}
     >
       <Avatar player={player} />
       <span className="mt-1 max-w-full truncate rounded-full bg-slate-950/70 px-2 text-xs font-bold leading-5 text-white">

@@ -39,6 +39,21 @@ export function cleanSettings(settings) {
   return { initialBuyIn, rebuyAmounts };
 }
 
+// How a player left mid-game. The same labels and icons as the quick results on
+// the end-game screen; the icon replaces the player's initials while they're out.
+export const EXITS = {
+  lost_all: { icon: '💀', label: 'הפסיד הכל' },
+  even: { icon: '🤝', label: 'מאוזן' },
+  amount: { icon: '💰', label: 'יצא עם סכום' },
+};
+
+// The chips a player leaves with for each exit kind (`amount` is typed in).
+export function exitChips(player, kind, amount = 0) {
+  if (kind === 'lost_all') return 0;
+  if (kind === 'even') return totalIn(player);
+  return amount;
+}
+
 export function totalIn(player) {
   return player.buyIns.reduce((sum, a) => sum + a, 0);
 }
@@ -130,7 +145,8 @@ export function gameReducer(state, action) {
       return {
         ...state,
         players: state.players.map((p) =>
-          p.id === action.id
+          // A player who is out gets no buy-ins until they're back.
+          p.id === action.id && !p.out
             ? { ...p, buyIns: [...p.buyIns, action.amount], buyInTimes: [...timesOf(p), action.at ?? null] }
             : p
         ),
@@ -154,6 +170,26 @@ export function gameReducer(state, action) {
         finals,
         // During setup the seat just becomes free; once started, close the gap.
         players: state.started ? rest.map((p) => (p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)) : rest,
+      };
+    }
+    case 'markOut': {
+      // The player keeps their seat; what they left with becomes their final result.
+      const player = state.players.find((p) => p.id === action.id);
+      if (!player || !EXITS[action.kind]) return state;
+      const chips = exitChips(player, action.kind, action.chips);
+      return {
+        ...state,
+        players: state.players.map((p) => (p.id === action.id ? { ...p, out: { kind: action.kind, chips } } : p)),
+        finals: { ...state.finals, [action.id]: state.endMode === 'chips' ? chips : chips - totalIn(player) },
+      };
+    }
+    case 'markBack': {
+      // Back in the game: no exit, no result yet.
+      const { [action.id]: _, ...finals } = state.finals;
+      return {
+        ...state,
+        finals,
+        players: state.players.map((p) => (p.id === action.id ? { ...p, out: null } : p)),
       };
     }
     case 'startGame':

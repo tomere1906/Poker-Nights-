@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import BottomSheet from './BottomSheet.jsx';
 import Avatar from './Avatar.jsx';
+import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
 
 const MODES = [
   { id: 'managers', title: 'רק מנהלים', hint: 'רק המנהל והמנהלים המשותפים מוסיפים כניסות' },
   { id: 'self_add', title: 'כל אחד את שלו', hint: 'כל שחקן יכול גם להוסיף כניסות לעצמו. תיקונים רק אצל המנהלים' },
 ];
 
-// Table management: buy-in mode and co-managers (manager only), delete table.
+// Table management: name, buy-in mode and co-managers (manager only), delete table.
 // Co-managers and players see the same information, read-only.
 export default function TableManageSheet({ view, actions, onDeleted, onClose, onError }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [name, setName] = useState(view.name ?? '');
   const { isManager } = view;
   const members = view.people.filter((p) => !p.isManager);
 
@@ -25,6 +27,36 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
   return (
     <BottomSheet onClose={onClose} title={<h2 className="mb-4 text-xl font-bold">ניהול שולחן ⚙️</h2>}>
       <div className="max-h-[65dvh] space-y-5 overflow-y-auto">
+        <section>
+          <p className="mb-2 text-sm text-slate-400">שם השולחן</p>
+          {isManager ? (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                run(() => actions.setName(name));
+              }}
+            >
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={MAX_TABLE_NAME}
+                placeholder="בלי שם"
+                className="min-w-0 flex-1 rounded-2xl bg-slate-800/70 px-4 py-3 outline-none ring-2 ring-transparent placeholder:text-slate-500 focus:ring-emerald-400"
+              />
+              <button
+                type="submit"
+                disabled={cleanTableName(name) === view.name}
+                className="rounded-2xl bg-emerald-400 px-4 font-bold text-slate-900 active:scale-95 disabled:bg-slate-800 disabled:text-slate-500"
+              >
+                שמור
+              </button>
+            </form>
+          ) : (
+            <p className="rounded-2xl bg-slate-800/70 p-3 font-bold">{view.name ?? 'בלי שם'}</p>
+          )}
+        </section>
+
         <section>
           <p className="mb-2 text-sm text-slate-400">מי מוסיף כניסות?</p>
           <div className="space-y-2">

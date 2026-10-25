@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { timesOf, totalIn } from '../lib/game.js';
+import { EXITS, timesOf, totalIn } from '../lib/game.js';
 import { formatShekel, formatTime } from '../lib/format.js';
 import { PALETTE } from '../lib/colors.js';
 import BottomSheet from './BottomSheet.jsx';
@@ -63,6 +63,51 @@ function IdentityEditor({ player, onSave }) {
   );
 }
 
+const EXIT_BUTTON =
+  'flex w-full items-center gap-3 rounded-2xl bg-slate-950/50 p-3 text-start font-bold ring-1 ring-white/10 transition active:scale-[0.98]';
+
+// "יצא מהמשחק": lost everything, left even, or left with a typed amount.
+function ExitPicker({ player, onPick }) {
+  const [typing, setTyping] = useState(false);
+  const [amount, setAmount] = useState(0);
+  return (
+    <div className="animate-fade-in mb-5 space-y-2 rounded-2xl bg-slate-800/70 p-3">
+      <p className="text-sm text-slate-400">איך {player.name} יצא? הסכום יופיע במסך סיום המשחק</p>
+      <button type="button" onClick={() => onPick('lost_all')} className={EXIT_BUTTON}>
+        <span className="text-2xl">{EXITS.lost_all.icon}</span>
+        <span className="flex-1">{EXITS.lost_all.label}</span>
+        <span className="text-sm text-slate-400">{formatShekel(0)}</span>
+      </button>
+      <button type="button" onClick={() => onPick('even')} className={EXIT_BUTTON}>
+        <span className="text-2xl">{EXITS.even.icon}</span>
+        <span className="flex-1">{EXITS.even.label}</span>
+        <span className="text-sm text-slate-400">{formatShekel(totalIn(player))}</span>
+      </button>
+      {typing ? (
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onPick('amount', amount);
+          }}
+        >
+          <div className="flex-1">
+            <AmountInput value={amount} onChange={setAmount} placeholder="יצא עם" autoFocus />
+          </div>
+          <button type="submit" className="rounded-2xl bg-emerald-400 px-5 font-bold text-slate-900 active:scale-95">
+            אישור
+          </button>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setTyping(true)} className={EXIT_BUTTON}>
+          <span className="text-2xl">{EXITS.amount.icon}</span>
+          <span className="flex-1">{EXITS.amount.label}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function PlayerSheet({
   player,
   rebuyAmounts,
@@ -72,16 +117,21 @@ export default function PlayerSheet({
   onUndo,
   onRemove,
   onEditIdentity,
+  onMarkOut,
+  onMarkBack,
   onClose,
 }) {
   const [custom, setCustom] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [showHistory, setShowHistory] = useState(!canManage && !canSelfAdd);
   const [editing, setEditing] = useState(false);
+  const [pickingExit, setPickingExit] = useState(false);
   const count = player.buyIns.length;
   const lastBuyIn = player.buyIns[count - 1];
   const times = timesOf(player);
-  const canAdd = canManage || canSelfAdd;
+  const exit = player.out && EXITS[player.out.kind];
+  // A player who is out gets no buy-ins until they're back.
+  const canAdd = (canManage || canSelfAdd) && !player.out;
 
   return (
     <BottomSheet
@@ -118,6 +168,35 @@ export default function PlayerSheet({
       }
     >
       {editing && <IdentityEditor player={player} onSave={onEditIdentity} />}
+
+      {exit && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl bg-slate-800/70 p-3">
+          <span className="text-3xl">{exit.icon}</span>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold">{exit.label}</p>
+            <p className="text-sm text-slate-400">יצא מהמשחק עם {formatShekel(player.out.chips)}</p>
+          </div>
+          {canManage && onMarkBack && (
+            <button
+              type="button"
+              onClick={onMarkBack}
+              className="rounded-xl bg-emerald-400 px-3 py-2.5 text-sm font-extrabold text-slate-900 active:scale-95"
+            >
+              חזר לשחק 🎲
+            </button>
+          )}
+        </div>
+      )}
+
+      {pickingExit && !exit && (
+        <ExitPicker
+          player={player}
+          onPick={(kind, amount) => {
+            setPickingExit(false);
+            onMarkOut(kind, amount);
+          }}
+        />
+      )}
 
       {showHistory && count > 0 && (
         <ol className="animate-fade-in mb-5 divide-y divide-white/5 rounded-2xl bg-slate-800/70 px-4 text-sm">
@@ -172,9 +251,19 @@ export default function PlayerSheet({
         <p className="mb-2 text-center text-xs text-slate-500">תיקונים ומחיקות – רק אצל המנהלים</p>
       )}
 
+      {canManage && onMarkOut && !exit && !pickingExit && (
+        <button
+          type="button"
+          onClick={() => setPickingExit(true)}
+          className="mb-2 w-full rounded-2xl bg-slate-800 py-3 font-bold text-slate-200 transition active:scale-[0.98]"
+        >
+          יצא מהמשחק 🚪
+        </button>
+      )}
+
       {canManage && (
         <div className="flex gap-2">
-          {count > 1 && (
+          {count > 1 && !exit && (
             <button
               type="button"
               onClick={onUndo}

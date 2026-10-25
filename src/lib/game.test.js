@@ -180,3 +180,48 @@ describe('initials', () => {
     expect(initials('  ')).toBe('?');
   });
 });
+
+describe('leaving mid-game', () => {
+  const game = (mode = 'net') => {
+    let s = { ...add(add(started, 'א', 0, 100), 'ב', 1, 50), endMode: mode };
+    s = gameReducer(s, { type: 'addBuyIn', id: s.players[0].id, amount: 100 });
+    return s;
+  };
+  const out = (s, kind, chips) => gameReducer(s, { type: 'markOut', id: s.players[0].id, kind, chips });
+
+  it('"הפסיד הכל" leaves with 0 and prefills the result', () => {
+    const s = out(game(), 'lost_all');
+    expect(s.players[0].out).toEqual({ kind: 'lost_all', chips: 0 });
+    expect(netOf(s, s.players[0])).toBe(-200);
+  });
+
+  it('"מאוזן" leaves with what they put in', () => {
+    const s = out(game('chips'), 'even');
+    expect(s.players[0].out).toEqual({ kind: 'even', chips: 200 });
+    expect(s.finals[s.players[0].id]).toBe(200);
+    expect(netOf(s, s.players[0])).toBe(0);
+  });
+
+  it('"יצא עם סכום" keeps the typed amount, in either end mode', () => {
+    const s = out(game(), 'amount', 260);
+    expect(netOf(s, s.players[0])).toBe(60);
+    expect(netOf(gameReducer(s, { type: 'setEndMode', mode: 'chips' }), s.players[0])).toBe(60);
+  });
+
+  it('stays in the seat, gets no buy-ins while out, and "חזר לשחק" undoes it', () => {
+    let s = out(game(), 'lost_all');
+    expect(s.players[0].seat).toBe(0);
+    s = gameReducer(s, { type: 'addBuyIn', id: s.players[0].id, amount: 50 });
+    expect(totalIn(s.players[0])).toBe(200);
+    s = gameReducer(s, { type: 'markBack', id: s.players[0].id });
+    expect(s.players[0].out).toBeNull();
+    expect(s.finals).toEqual({});
+    s = gameReducer(s, { type: 'addBuyIn', id: s.players[0].id, amount: 50 });
+    expect(totalIn(s.players[0])).toBe(250);
+  });
+
+  it('ignores an unknown exit kind', () => {
+    const s = game();
+    expect(out(s, 'flew', 5)).toBe(s);
+  });
+});

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MAX_REBUY_BUTTONS, MIN_REBUY_BUTTONS, cleanSettings } from '../lib/game.js';
+import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
 import AmountInput from './AmountInput.jsx';
 
 function Card({ title, hint, children }) {
@@ -17,11 +18,13 @@ const BUY_IN_MODES = [
   { id: 'self_add', title: 'כל אחד את שלו', hint: 'כל שחקן יכול גם להוסיף כניסות לעצמו. תיקונים רק אצל המנהלים' },
 ];
 
-// online: an online table also chooses who adds buy-ins. onOpen(settings, buyInMode).
+// online: an online table also has an optional name and chooses who adds
+// buy-ins. onOpen(settings, buyInMode, name).
 export default function TableSetup({ defaults, online = false, onBack, onOpen }) {
   const [initialBuyIn, setInitialBuyIn] = useState(defaults.initialBuyIn);
   const [amounts, setAmounts] = useState(defaults.rebuyAmounts);
   const [buyInMode, setBuyInMode] = useState('managers');
+  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
 
   const distinct = new Set(amounts.filter((a) => a > 0));
@@ -46,6 +49,18 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
       </div>
 
       <div className="space-y-3">
+        {online && (
+          <Card title="שם השולחן" hint="לא חובה. יופיע בשולחן, בהזמנה וביומן">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={MAX_TABLE_NAME}
+              placeholder="למשל: שישי אצל אסף"
+              className="w-full rounded-2xl bg-slate-950/60 px-4 py-3 text-lg outline-none ring-2 ring-transparent placeholder:text-base placeholder:text-slate-500 focus:ring-emerald-400"
+            />
+          </Card>
+        )}
+
         <Card title="כניסה ראשונה" hint="כל שחקן חדש ייכנס בסכום הזה (אפשר לשנות לשחקן מסוים)">
           <AmountInput value={initialBuyIn} onChange={setInitialBuyIn} placeholder="סכום" />
         </Card>
@@ -133,7 +148,7 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           onClick={async () => {
             setBusy(true);
             try {
-              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts }), buyInMode);
+              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts }), buyInMode, cleanTableName(name));
             } finally {
               setBusy(false);
             }

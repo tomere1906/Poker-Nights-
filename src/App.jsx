@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { DEFAULT_SETTINGS, cleanSettings, gameReducer, initialState, normalizeState } from './lib/game.js';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { DEFAULT_SETTINGS, cleanSettings, gameReducer, initialState, netOf, normalizeState } from './lib/game.js';
 import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.js';
 import { useAuth } from './lib/auth.js';
 import { createOnlineTable } from './lib/onlineTable.js';
@@ -8,7 +8,7 @@ import { initialScreen, rememberScreen } from './lib/screen.js';
 import TableScreen from './components/TableScreen.jsx';
 import OnlineTable from './components/OnlineTable.jsx';
 import EndGame from './components/EndGame.jsx';
-import Settlement from './components/Settlement.jsx';
+import Settlement, { NewGameButton } from './components/Settlement.jsx';
 import Confetti from './components/Confetti.jsx';
 import Toast from './components/Toast.jsx';
 import HomeScreen from './components/HomeScreen.jsx';
@@ -58,6 +58,7 @@ export default function App() {
   }, [screen, state.view]);
 
   const endConfetti = useCallback(() => setConfetti(0), []);
+  const celebrate = useCallback(() => setConfetti((n) => n + 1), []);
 
   const showToast = useCallback((text) => {
     clearTimeout(toastTimer.current);
@@ -67,6 +68,7 @@ export default function App() {
 
   const setView = (view) => dispatch({ type: 'setView', view });
   const { players, view, started, settings } = state;
+  const localNets = useMemo(() => players.map((p) => ({ id: p.id, net: netOf(state, p) ?? 0 })), [state]);
   const goHome = () => setScreen('home');
   const openOnline = (id) => {
     setOnlineTableId(id);
@@ -122,11 +124,11 @@ export default function App() {
           online={screen === 'setup-online'}
           defaults={cleanSettings(loadSettings(DEFAULT_SETTINGS))}
           onBack={goHome}
-          onOpen={async (newSettings, buyInMode) => {
+          onOpen={async (newSettings, buyInMode, tableName) => {
             saveSettings(newSettings);
             if (screen === 'setup-online') {
               try {
-                openOnline(await createOnlineTable(newSettings, buyInMode));
+                openOnline(await createOnlineTable(newSettings, buyInMode, tableName));
                 showToast('השולחן האונליין נפתח 🎉');
               } catch (e) {
                 showToast(`לא הצלחנו לפתוח שולחן: ${e.message}`);
@@ -145,7 +147,14 @@ export default function App() {
       )}
 
       {!needsName && !invite && screen === 'online' && onlineTableId && auth.session && (
-        <OnlineTable key={onlineTableId} tableId={onlineTableId} userId={auth.session.user.id} onHome={goHome} showToast={showToast} />
+        <OnlineTable
+          key={onlineTableId}
+          tableId={onlineTableId}
+          userId={auth.session.user.id}
+          onHome={goHome}
+          showToast={showToast}
+          onCelebrate={celebrate}
+        />
       )}
 
       {!needsName && !invite && screen === 'game' && (
@@ -174,6 +183,8 @@ export default function App() {
           onUndo={(player) => dispatch({ type: 'undoBuyIn', id: player.id })}
           onRemove={(player) => dispatch({ type: 'removePlayer', id: player.id })}
           onMove={(id, seat) => dispatch({ type: 'moveSeat', id, seat })}
+          onMarkOut={(player, kind, chips) => dispatch({ type: 'markOut', id: player.id, kind, chips })}
+          onMarkBack={(player) => dispatch({ type: 'markBack', id: player.id })}
           onStart={() => dispatch({ type: 'startGame' })}
           onEnd={() => setView('end')}
           showToast={showToast}
@@ -188,20 +199,20 @@ export default function App() {
           onBack={() => setView('table')}
           onSettle={() => {
             setView('settle');
-            setConfetti((n) => n + 1);
+            celebrate();
           }}
         />
       )}
 
       {!needsName && !invite && screen === 'game' && view === 'settle' && (
-        <Settlement
-          state={state}
-          onBack={() => setView('end')}
-          onNewGame={() => {
-            dispatch({ type: 'newGame' });
-            goHome();
-          }}
-        />
+        <Settlement players={players} entries={localNets} onBack={() => setView('end')}>
+          <NewGameButton
+            onNewGame={() => {
+              dispatch({ type: 'newGame' });
+              goHome();
+            }}
+          />
+        </Settlement>
       )}
 
       {confetti > 0 && <Confetti key={confetti} onDone={endConfetti} />}

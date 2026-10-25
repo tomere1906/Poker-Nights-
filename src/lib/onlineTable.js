@@ -3,23 +3,37 @@
 // each user may actually do; the UI only hides what would be refused anyway.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './supabase.js';
-import { MAX_PLAYERS, cleanSettings, firstFreeSeat } from './game.js';
+import { MAX_PLAYERS, cleanSettings, exitChips, firstFreeSeat, totalIn } from './game.js';
 import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
 
 const TABLE_COLUMNS =
-  'id, manager_id, status, initial_buy_in, rebuy_amounts, buy_in_mode, invite_code, created_at';
+  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, buy_in_mode, end_mode, invite_code, created_at, ended_at';
+
+// Same limit as the database check (poker_tables_name_length).
+export const MAX_TABLE_NAME = 30;
+
+// Optional: blank means no name.
+export function cleanTableName(name) {
+  const trimmed = (name ?? '').trim().slice(0, MAX_TABLE_NAME);
+  return trimmed || null;
+}
 
 function must({ data, error }) {
   if (error) throw error;
   return data;
 }
 
-export async function createOnlineTable(settings, buyInMode) {
+export async function createOnlineTable(settings, buyInMode, name) {
   const row = must(
     await supabase
       .from('poker_tables')
-      .insert({ initial_buy_in: settings.initialBuyIn, rebuy_amounts: settings.rebuyAmounts, buy_in_mode: buyInMode })
+      .insert({
+        name: cleanTableName(name),
+        initial_buy_in: settings.initialBuyIn,
+        rebuy_amounts: settings.rebuyAmounts,
+        buy_in_mode: buyInMode,
+      })
       .select('id')
       .single()
   );
@@ -62,7 +76,7 @@ async function loadTable(tableId) {
       .single(),
     supabase
       .from('table_players')
-      .select('id, user_id, nickname, color, seat, final_value, profile:profiles(display_name, color)')
+      .select('id, user_id, nickname, color, seat, out_kind, out_chips, final_value, final_net, profile:profiles(display_name, color)')
       .eq('table_id', tableId),
     supabase.from('buy_ins').select('id, player_id, amount, created_at').eq('table_id', tableId).order('created_at'),
     supabase
@@ -93,7 +107,27 @@ function toPlayer(row, buyIns) {
     buyIns: buyIns.map((b) => b.amount),
     buyInTimes: buyIns.map((b) => Date.parse(b.created_at)),
     buyInIds: buyIns.map((b) => b.id),
+    out: row.out_kind ? { kind: row.out_kind, chips: row.out_chips } : null,
+    // Chips the player left with, as entered on the end-game screen; else the exit amount.
+    finalChips: row.final_value ?? (row.out_kind ? row.out_chips : null),
+    finalNet: row.final_net,
   };
+}
+
+// Results in the end-game screen's terms: profit/loss ('net') or chips ('chips').
+// The database always stores chips, so switching modes never rewrites anything.
+export function finalsFor(players, endMode, chipsOf = (p) => p.finalChips) {
+  const finals = {};
+  for (const p of players) {
+    const chips = chipsOf(p);
+    if (chips !== null && chips !== undefined) finals[p.id] = endMode === 'chips' ? chips : chips - totalIn(p);
+  }
+  return finals;
+}
+
+export function toChips(player, value, endMode) {
+  if (value === null) return null;
+  return endMode === 'chips' ? value : value + totalIn(player);
 }
 
 export function toView(raw, userId) {
@@ -123,10 +157,17 @@ export function toView(raw, userId) {
   const seated = new Set(players.map((p) => p.userId).filter(Boolean));
   const ended = table.status === 'ended';
 
+  const endMode = table.end_mode ?? 'net';
+
   return {
     id: table.id,
+    name: table.name ?? null,
+    managerName: table.manager?.display_name ?? 'מנהל השולחן',
     status: table.status,
+    ended,
     started: table.status !== 'seating',
+    endMode,
+    finals: finalsFor(players, endMode),
     settings: cleanSettings({ initialBuyIn: table.initial_buy_in, rebuyAmounts: table.rebuy_amounts }),
     buyInMode: table.buy_in_mode,
     inviteCode: table.invite_code,
@@ -228,6 +269,46 @@ function makeActions(view) {
           .eq('table_id', tableId)
           .eq('user_id', userId)
       );
+    },
+
+    // Left mid-game: the seat stays, the exit amount prefills the end-game screen.
+    async markOut(player, kind, amount) {
+      const out = { out_kind: kind, out_chips: exitChips(player, kind, amount) };
+      must(await supabase.from('table_players').update(out).eq('id', player.id));
+    },
+
+    // "חזר לשחק": no exit and no result yet.
+    async markBack(player) {
+      must(
+        await supabase
+          .from('table_players')
+          .update({ out_kind: null, out_chips: null, final_value: null })
+          .eq('id', player.id)
+      );
+    },
+
+    async setName(name) {
+      must(await supabase.from('poker_tables').update({ name: cleanTableName(name) }).eq('id', tableId));
+    },
+
+    async setEndMode(mode) {
+      must(await supabase.from('poker_tables').update({ end_mode: mode }).eq('id', tableId));
+    },
+
+    // chips: what the player left with (null clears it).
+    async setFinalChips(playerId, chips) {
+      must(await supabase.from('table_players').update({ final_value: chips }).eq('id', playerId));
+    },
+
+    // nets: the settled whole-shekel results ({ id, net }[]). One transaction:
+    // the database checks they add up to 0 and that only the manager ends the game.
+    async endGame(nets) {
+      const byId = Object.fromEntries(nets.map((e) => [e.id, e.net]));
+      must(await supabase.rpc('end_game', { p_table: tableId, p_nets: byId }));
+    },
+
+    async reopen() {
+      must(await supabase.from('poker_tables').update({ status: 'playing' }).eq('id', tableId));
     },
 
     async deleteTable() {

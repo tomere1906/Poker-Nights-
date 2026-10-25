@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import BottomSheet from './BottomSheet.jsx';
 
-export function inviteMessage(link) {
-  return `בוא לשחק פוקר! 🃏 הצטרף לשולחן: ${link}`;
+// "תומר הזמין אותך לשחק פוקר בשולחן 'שישי אצל אסף' 🃏 הצטרף כאן: <link>"
+export function inviteMessage(link, { managerName, tableName } = {}) {
+  const who = managerName?.trim() || 'חבר';
+  const where = tableName?.trim() ? ` בשולחן '${tableName.trim()}'` : '';
+  return `${who} הזמין אותך לשחק פוקר${where} 🃏 הצטרף כאן: ${link}`;
 }
 
 async function copyText(text) {
@@ -24,10 +27,9 @@ async function copyText(text) {
 
 // "הזמן חברים": share sheet (WhatsApp etc.), wa.me fallback, copy, and a QR
 // for people sitting at the table.
-export default function InviteSheet({ link, onClose }) {
+export default function InviteSheet({ link, message = inviteMessage(link), onClose }) {
   const [qr, setQr] = useState(null);
   const [copied, setCopied] = useState(false);
-  const message = inviteMessage(link);
   const whatsapp = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   useEffect(() => {
@@ -50,7 +52,8 @@ export default function InviteSheet({ link, onClose }) {
 
   return (
     <BottomSheet onClose={onClose} title={<h2 className="mb-1 text-xl font-bold">הזמן חברים 💌</h2>}>
-      <p className="mb-4 text-sm text-slate-400">מי שפותח את הקישור מתחבר עם Google ומצטרף לשולחן</p>
+      <p className="mb-3 text-sm text-slate-400">מי שפותח את הקישור מתחבר עם Google ומצטרף לשולחן</p>
+      <p className="mb-4 line-clamp-3 rounded-2xl [overflow-wrap:anywhere] bg-slate-800/70 p-3 text-sm text-slate-300">{message}</p>
 
       <button
         type="button"

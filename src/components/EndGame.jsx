@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { netOf, potTotal, totalIn } from '../lib/game.js';
+import { EXITS, netOf, potTotal, totalIn } from '../lib/game.js';
 import { formatShekel, parseAmount } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
 
@@ -191,10 +191,10 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle }) {
               {/* Quick results, aligned under the name (avatar 2.75rem + gap 0.5rem). */}
               <div className="mt-2 flex gap-2 ps-[3.25rem]">
                 <QuickPill active={net === 0} tone="even" onClick={() => quick(p, 0)}>
-                  🤝 מאוזן
+                  {EXITS.even.icon} {EXITS.even.label}
                 </QuickPill>
                 <QuickPill active={net === -totalIn(p)} tone="lost" onClick={() => quick(p, -totalIn(p))}>
-                  💀 הפסיד הכל
+                  {EXITS.lost_all.icon} {EXITS.lost_all.label}
                 </QuickPill>
               </div>
             </li>
