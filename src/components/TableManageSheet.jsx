@@ -2,7 +2,6 @@ import { useState } from 'react';
 import BottomSheet from './BottomSheet.jsx';
 import Avatar from './Avatar.jsx';
 import RoundingPicker from './RoundingPicker.jsx';
-import Toggle from './Toggle.jsx';
 import { AmountsForm } from './AmountsEditor.jsx';
 import { formatShekel } from '../lib/format.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
@@ -88,16 +87,6 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
             onChange={(unit) => run(() => actions.setRounding(unit))}
           />
           {!isManager && <p className="mt-2 text-xs text-slate-500">רק מנהל השולחן משנה את זה</p>}
-        </section>
-
-        <section>
-          <Toggle
-            checked={view.settings.sheep}
-            disabled={!view.canManage || view.ended}
-            onChange={(on) => run(() => actions.setSheep(on))}
-            label="🐑 כבש הערב"
-            hint="כבש ליד מי שהפסיד הכי הרבה בתוצאות הערב"
-          />
         </section>
 
         <section>

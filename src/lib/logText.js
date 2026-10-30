@@ -62,8 +62,6 @@ export function describeLog(entry) {
       return d.mode === 'self_add' ? `${who} שינה: כל אחד מוסיף לעצמו כניסות` : `${who} שינה: רק מנהלים מוסיפים כניסות`;
     case 'rounding_changed':
       return d.new === 1 ? `${who} שינה: בלי עיגול (לשקל)` : `${who} שינה את עיגול הסכומים ל־${formatShekel(d.new)}`;
-    case 'sheep_changed':
-      return d.on ? `${who} הפעיל את "כבש הערב" 🐑` : `${who} כיבה את "כבש הערב" 🐑`;
     case 'settings_changed': {
       const buttons = (d.rebuy_amounts ?? []).map((a) => `+${a}`).join(' ');
       if (!d.initial_buy_in) return `${who} עדכן את סכומי הכניסה`;

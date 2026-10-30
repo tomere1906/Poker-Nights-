@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TRANSFER, ROUNDING_UNITS, cashParts, cashRoom, roundNets, roundTo, settle, sheepIds, splitUnfitBills } from './settlement.js';
+import { MIN_TRANSFER, ROUNDING_UNITS, cashParts, cashRoom, roundNets, roundTo, settle, splitUnfitBills } from './settlement.js';
 
 const entries = (obj) => Object.entries(obj).map(([id, net]) => ({ id, net }));
 
@@ -354,17 +354,5 @@ describe('cash paid when settling', () => {
       expectRows(result);
       expect(result.transfers.every((r) => Number.isInteger(r.amount) && r.amount > 0)).toBe(true);
     }
-  });
-});
-
-describe('"🐑 כבש הערב"', () => {
-  it('the biggest loser, or all of them on a tie', () => {
-    expect([...sheepIds(entries({ a: -250, b: -100, c: 350 }))]).toEqual(['a']);
-    expect([...sheepIds(entries({ a: -250, b: -250, c: 500 }))]).toEqual(['a', 'b']);
-  });
-
-  it('nobody when nobody lost', () => {
-    expect(sheepIds(entries({ a: 0, b: 0 })).size).toBe(0);
-    expect(sheepIds([]).size).toBe(0);
   });
 });

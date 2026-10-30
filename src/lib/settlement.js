@@ -269,16 +269,12 @@ export function cashRoom(net, cash, playerId) {
   return Math.max(0, -(net ?? 0) - paid);
 }
 
-// "🐑 כבש הערב": the biggest loser(s) of the night (all of them on a tie), from
-// the rounded nets. Nobody when nobody lost.
-export function sheepIds(nets) {
-  const worst = Math.min(0, ...nets.map((e) => e.net));
-  return worst < 0 ? new Set(nets.filter((e) => e.net === worst).map((e) => e.id)) : new Set();
-}
+// Show a 💵 before the green amount of an all-cash row (else the green alone).
+export const CASH_ICON = true;
 
 // How a row was paid, for its display: null for a plain transfer, else
-// { cash, transfer } (transfer 0 = all cash). Shown as a green amount and
-// "← מזומן" / "← 200 מזומן + 70 העברה" under it.
+// { cash, transfer } (transfer 0 = all cash). All cash: a green amount and
+// "← מזומן" under it; mixed: the usual amount and "200 מזומן · 70 העברה" under it.
 export function cashParts(row) {
   if (!row.cash) return null;
   return { cash: Math.min(row.cash, row.amount), transfer: Math.max(0, row.amount - row.cash) };

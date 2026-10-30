@@ -46,11 +46,6 @@ describe('describeLog: exits and table names', () => {
     expect(say('cash_removed', { name: 'נדב', amount: 200 }, 'תומר')).toBe('תומר מחק מזומן של 200 ₪ של נדב');
   });
 
-  it('describes the sheep toggle', () => {
-    expect(say('sheep_changed', { on: false }, 'תומר')).toBe('תומר כיבה את "כבש הערב" 🐑');
-    expect(say('sheep_changed', { on: true }, 'תומר')).toBe('תומר הפעיל את "כבש הערב" 🐑');
-  });
-
   it('describes new buy-in amounts', () => {
     expect(say('settings_changed', { initial_buy_in: 200, rebuy_amounts: [200, 500] }, 'תומר')).toBe('תומר עדכן את הסכומים: כניסה 200 ₪ · +200 +500');
     expect(say('settings_changed', {}, 'תומר')).toBe('תומר עדכן את סכומי הכניסה');

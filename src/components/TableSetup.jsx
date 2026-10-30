@@ -3,7 +3,6 @@ import { cleanSettings } from '../lib/game.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
 import AmountsEditor, { amountsValid } from './AmountsEditor.jsx';
 import RoundingPicker from './RoundingPicker.jsx';
-import Toggle from './Toggle.jsx';
 
 function Card({ title, hint, children }) {
   return (
@@ -28,7 +27,6 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
   const [buyInMode, setBuyInMode] = useState('managers');
   const [name, setName] = useState('');
   const [rounding, setRounding] = useState(defaults.rounding);
-  const [sheep, setSheep] = useState(defaults.sheep !== false);
   const [busy, setBusy] = useState(false);
 
   const valid = amountsValid(initialBuyIn, amounts);
@@ -72,10 +70,6 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           <RoundingPicker value={rounding} onChange={setRounding} />
         </Card>
 
-        <section className="rounded-3xl bg-slate-800/70 p-4 shadow-lg ring-1 ring-white/5">
-          <Toggle checked={sheep} onChange={setSheep} label="🐑 כבש הערב" hint="כבש ליד מי שהפסיד הכי הרבה בתוצאות הערב" />
-        </section>
-
         {online && (
           <Card title="מי מוסיף כניסות?" hint="אפשר לשנות גם אחר כך, בניהול השולחן">
             <div className="space-y-2">
@@ -108,7 +102,7 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           onClick={async () => {
             setBusy(true);
             try {
-              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts, rounding, sheep }), buyInMode, cleanTableName(name));
+              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts, rounding }), buyInMode, cleanTableName(name));
             } finally {
               setBusy(false);
             }

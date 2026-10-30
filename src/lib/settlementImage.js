@@ -6,12 +6,11 @@ import { formatShekel } from './format.js';
 import { initials } from './game.js';
 import { paletteColor } from './colors.js';
 import { splitName } from './names.js';
-import { cashParts } from './settlement.js';
+import { CASH_ICON, cashParts } from './settlement.js';
 
 export const CARD_WIDTH = 390; // CSS px, like a phone screen
 const PAD = 16;
 const ROW_H = 64;
-const ROW_MIXED_H = 82; // a row paid partly in cash: two lines under the amount
 const ROW_GAP = 8;
 const PILL_H = 30;
 const PILL_TWO_LINES_H = 46;
@@ -35,7 +34,6 @@ const NAME_FONT = `700 16px ${FONT}`;
 const NAME_REST_FONT = `600 13px ${FONT}`;
 const PILL_FONT = `700 14px ${FONT}`;
 const PILL_REST_FONT = `600 12px ${FONT}`;
-const SHEEP_FONT = `400 17px ${FONT}`;
 
 const signed = (n) => formatShekel(n, { signed: true });
 
@@ -133,7 +131,7 @@ function nameWidth(ctx, name, fonts) {
   return Math.max(w1, ctx.measureText(rest).width);
 }
 
-const rowHeight = (t) => (cashParts(t)?.transfer ? ROW_MIXED_H : ROW_H);
+const rowHeight = () => ROW_H;
 
 // Draws colored pieces of one line, centered on cx (RTL: the first piece on the right).
 function drawPieces(ctx, pieces, cx, y, font) {
@@ -149,21 +147,17 @@ function drawPieces(ctx, pieces, cx, y, font) {
   });
 }
 
-// data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }],
-//         sheep: Set of ids with "🐑 כבש הערב", players: Map(id -> player) }
-export function drawSettlement(data, scale = 3) {
+// data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }], players: Map(id -> player) }
+// cashIcon: a 💵 before the green amount of an all-cash row.
+export function drawSettlement(data, scale = 3, cashIcon = CASH_ICON) {
   const measure = document.createElement('canvas').getContext('2d');
   const nameOf = (id) => data.players.get(id)?.name ?? 'שחקן';
   const sorted = [...data.nets].sort((a, b) => b.net - a.net);
-  const sheep = data.sheep ?? new Set();
   const pillMax = CARD_WIDTH - 2 * PAD;
-  measure.font = SHEEP_FONT;
-  const sheepW = measure.measureText('🐑').width + 6;
   const pillWidth = (e) => {
     measure.font = PILL_FONT;
     const amount = measure.measureText(signed(e.net)).width;
-    const extra = sheep.has(e.id) ? sheepW : 0;
-    return Math.min(pillMax, PILL_PAD + nameWidth(measure, nameOf(e.id), [PILL_FONT, PILL_REST_FONT]) + 6 + amount + extra);
+    return Math.min(pillMax, PILL_PAD + nameWidth(measure, nameOf(e.id), [PILL_FONT, PILL_REST_FONT]) + 6 + amount);
   };
   const pillLines = layoutPills(sorted, pillMax, pillWidth);
   const pillLineH = (line) => (line.some((p) => splitName(nameOf(p.item.id)).rest) ? PILL_TWO_LINES_H : PILL_H);
@@ -228,43 +222,42 @@ export function drawSettlement(data, scale = 3) {
     ctx.fillStyle = COLORS.text;
     const nameMax = half - 2 * r - 24 - 48;
     drawName(ctx, nameOf(t.from), right - 12 - 2 * r - 8, mid, nameMax, 'right');
-    if (sheep.has(t.from)) {
-      // A 🐑 badge on the payer's avatar (bottom corner, toward the name).
-      const bx = right - 12 - 2 * r + 2;
-      const by = mid + r - 2;
-      ctx.fillStyle = COLORS.page;
-      ctx.beginPath();
-      ctx.arc(bx, by, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.font = `400 14px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🐑', bx, by + 1);
-      ctx.fillStyle = COLORS.text;
-    }
     drawName(ctx, nameOf(t.to), PAD + 12 + 2 * r + 8, mid, nameMax, 'left');
 
-    // Middle: the amount and the arrow line. Cash: a green amount with 💵 before
-    // it and "← מזומן" / "← 200 מזומן + 70 העברה" under it.
+    // Middle: the amount and the line under it (like the screen).
+    // Plain: yellow amount, "←". All cash: green amount (with 💵 when cashIcon),
+    // "← מזומן". Mixed: yellow amount, "200 מזומן · 70 העברה" on one line.
     const cx = CARD_WIDTH / 2;
-    if (!parts) {
+    const amountFont = `800 18px ${FONT}`;
+    const lineFont = `700 13px ${FONT}`;
+    if (parts && !parts.transfer) {
+      ctx.font = amountFont;
+      const amountW = ctx.measureText(formatShekel(t.amount)).width;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = COLORS.cash;
+      if (cashIcon) {
+        ctx.font = `400 22px ${FONT}`;
+        const iconW = ctx.measureText('💵').width + 4;
+        ctx.fillText('💵', cx + amountW / 2 + 2, mid - 9);
+        ctx.font = amountFont;
+        ctx.fillText(formatShekel(t.amount), cx - iconW / 2, mid - 8);
+      } else {
+        ctx.fillText(formatShekel(t.amount), cx, mid - 8);
+      }
+      drawPieces(ctx, [['← ', COLORS.muted], ['מזומן', COLORS.cash]], cx, mid + 13, lineFont);
+    } else {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = COLORS.amount;
-      ctx.font = `800 18px ${FONT}`;
+      ctx.font = amountFont;
       ctx.fillText(formatShekel(t.amount), cx, mid - 8);
-      ctx.fillStyle = COLORS.muted;
-      ctx.font = `400 20px ${FONT}`;
-      ctx.fillText('←', cx, mid + 11);
-    } else {
-      const top = parts.transfer ? mid - 19 : mid - 9;
-      drawPieces(ctx, [['💵 ', COLORS.cash], [formatShekel(t.amount), COLORS.cash]], cx, top, `800 18px ${FONT}`);
-      const lineFont = `700 14px ${FONT}`;
-      if (parts.transfer) {
-        drawPieces(ctx, [['← ', COLORS.muted], [`${parts.cash} מזומן`, COLORS.cash]], cx, top + 21, lineFont);
-        drawPieces(ctx, [[`+ ${parts.transfer} העברה`, COLORS.muted]], cx, top + 39, lineFont);
+      if (parts) {
+        drawPieces(ctx, [[`${parts.cash} מזומן`, COLORS.cash], [' · ', COLORS.muted], [`${parts.transfer} העברה`, COLORS.muted]], cx, mid + 13, lineFont);
       } else {
-        drawPieces(ctx, [['← ', COLORS.muted], ['מזומן', COLORS.cash]], cx, top + 21, lineFont);
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = `400 20px ${FONT}`;
+        ctx.fillText('←', cx, mid + 11);
       }
     }
     y += h + ROW_GAP;
@@ -293,13 +286,7 @@ export function drawSettlement(data, scale = 3) {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(amount, x - width + PILL_PAD / 2, y + lineH / 2 + 1);
-      const extra = sheep.has(e.id) ? sheepW : 0;
-      if (extra) {
-        ctx.font = SHEEP_FONT;
-        ctx.fillText('🐑', x - width + PILL_PAD / 2 + amountW + 4, y + lineH / 2 + 1);
-        ctx.fillStyle = tone.fg;
-      }
-      drawName(ctx, nameOf(e.id), x - PILL_PAD / 2, y + lineH / 2 + 1, width - PILL_PAD - amountW - 6 - extra, 'right', [PILL_FONT, PILL_REST_FONT]);
+      drawName(ctx, nameOf(e.id), x - PILL_PAD / 2, y + lineH / 2 + 1, width - PILL_PAD - amountW - 6, 'right', [PILL_FONT, PILL_REST_FONT]);
       x -= width + PILL_GAP;
     }
     y += lineH + PILL_GAP;
@@ -317,13 +304,13 @@ export function drawSettlement(data, scale = 3) {
 
 // The PNG, after the app font has loaded (otherwise the canvas would use a fallback font).
 // subtitle: the line under the title, as on the screen (table name · date · rounding).
-export async function renderSettlementPng({ subtitle, date, transfers, nets, sheep, players }) {
+export async function renderSettlementPng({ subtitle, date, transfers, nets, players }) {
   try {
     await Promise.all([document.fonts.load(`800 26px Rubik`), document.fonts.load(`700 16px Rubik`), document.fonts.load(`400 15px Rubik`)]);
   } catch {
     // Offline or blocked: draw with the fallback font.
   }
-  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, sheep, players });
+  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, players });
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('לא הצלחנו ליצור את התמונה');
   return new File([blob], imageFileName(date), { type: 'image/png' });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { cashParts, settle, sheepIds } from '../lib/settlement.js';
+import { CASH_ICON, cashParts, settle } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
@@ -22,37 +22,42 @@ export function NewGameButton({ onNewGame }) {
   );
 }
 
-// The middle of a row: the amount and the arrow. With cash the amount is green
-// with a 💵 before it, and the arrow line says "← מזומן", or for a mixed row
-// "← 200 מזומן + 70 העברה" (the cash part green).
+// The middle of a row: the amount and the arrow line under it.
+// - plain transfer: yellow amount, "←".
+// - all cash: green amount (with 💵 when CASH_ICON), "← מזומן" in green.
+// - mixed: the usual yellow amount (only part of it is cash), and one line
+//   "200 מזומן · 70 העברה" (cash green, transfer gray) that never wraps.
 function RowAmount({ row }) {
   const parts = cashParts(row);
-  if (!parts) {
+  if (!parts || parts.transfer) {
     return (
       <div className="flex shrink-0 flex-col items-center px-1">
         <span className="text-lg font-extrabold text-amber-300">{formatShekel(row.amount)}</span>
-        <span className="-mt-1 text-xl leading-none text-slate-400">←</span>
+        {parts ? (
+          <span className="whitespace-nowrap text-[13px] font-bold leading-tight">
+            <span className="text-emerald-300">{parts.cash} מזומן</span>
+            <span className="text-slate-500"> · </span>
+            <span className="text-slate-400">{parts.transfer} העברה</span>
+          </span>
+        ) : (
+          <span className="-mt-1 text-xl leading-none text-slate-400">←</span>
+        )}
       </div>
     );
   }
   return (
     <div className="flex shrink-0 flex-col items-center px-1">
-      <span className="whitespace-nowrap text-lg font-extrabold text-emerald-300">
-        <span className="me-1 text-base" aria-hidden>
-          💵
-        </span>
+      <span className="flex items-center gap-1 whitespace-nowrap text-lg font-extrabold text-emerald-300">
+        {CASH_ICON && (
+          <span className="text-2xl leading-none" aria-hidden>
+            💵
+          </span>
+        )}
         {formatShekel(row.amount)}
       </span>
-      <span className="max-w-[8.5rem] text-center text-sm font-bold leading-tight">
+      <span className="text-sm font-bold leading-tight">
         <span className="text-slate-400">← </span>
-        {parts.transfer ? (
-          <>
-            <span className="whitespace-nowrap text-emerald-300">{parts.cash} מזומן</span>{' '}
-            <span className="whitespace-nowrap text-slate-400">+ {parts.transfer} העברה</span>
-          </>
-        ) : (
-          <span className="text-emerald-300">מזומן</span>
-        )}
+        <span className="text-emerald-300">מזומן</span>
       </span>
     </div>
   );
@@ -70,7 +75,6 @@ export default function Settlement({
   entries,
   rounding = 1,
   cash = [],
-  sheep = true,
   onRoundingChange = null,
   tableName = null,
   date = null,
@@ -88,26 +92,24 @@ export default function Settlement({
   const { nets, transfers } = useMemo(() => settle(entries, { unit: rounding, cash }), [entries, rounding, cash]);
   // The header: table name and date only.
   const details = [tableName, formatDate(when)].filter(Boolean).join(' · ');
-  // "🐑 כבש הערב": the biggest loser(s), when the table has it on.
-  const sheepOf = useMemo(() => (sheep ? sheepIds(nets) : new Set()), [sheep, nets]);
 
   // Prepare the image up front: iPhone Safari opens the share sheet only right
   // after a tap, so the tap itself must not wait for drawing.
   useEffect(() => {
     let active = true;
     setFile(null);
-    renderSettlementPng({ subtitle: details, date: when, transfers, nets, sheep: sheepOf, players: byId })
+    renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId })
       .then((f) => active && setFile(f))
       .catch(() => active && setFile(null));
     return () => {
       active = false;
     };
-  }, [details, when, transfers, nets, sheepOf, byId]);
+  }, [details, when, transfers, nets, byId]);
 
   async function share() {
     setShareState('working');
     try {
-      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, sheep: sheepOf, players: byId }));
+      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId }));
       const result = await shareOrDownload(image);
       setShareState(result === 'downloaded' ? 'downloaded' : null);
       if (result === 'downloaded') setTimeout(() => setShareState(null), 2500);
@@ -157,18 +159,7 @@ export default function Settlement({
             >
               <div className="flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <div className="relative shrink-0">
-                    <Avatar player={byId.get(t.from)} size="h-10 w-10 text-sm" />
-                    {sheepOf.has(t.from) && (
-                      <span
-                        className="absolute -bottom-1.5 -end-2 flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-base leading-none ring-2 ring-slate-800"
-                        role="img"
-                        aria-label="כבש הערב"
-                      >
-                        🐑
-                      </span>
-                    )}
-                  </div>
+                  <Avatar player={byId.get(t.from)} size="h-10 w-10 text-sm" />
                   <PlayerName name={nameOf(t.from)} className="font-bold" />
                 </div>
                 <RowAmount row={t} />
@@ -194,11 +185,6 @@ export default function Settlement({
               }`}
             >
               <PlayerName name={nameOf(e.id)} />
-              {sheepOf.has(e.id) && (
-                <span className="shrink-0 text-lg leading-none" role="img" aria-label="כבש הערב">
-                  🐑
-                </span>
-              )}
               <span className="shrink-0">{formatShekel(e.net, { signed: true })}</span>
             </span>
           ))}

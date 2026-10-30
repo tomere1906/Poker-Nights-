@@ -11,8 +11,7 @@ export const MAX_REBUY_BUTTONS = 4;
 
 // Table settings chosen by the table manager when opening a table.
 // rounding: "עיגול סכומים", results are rounded to a multiple of it (1 / 5 / 10 / 50 ₪).
-// sheep: "🐑 כבש הערב", a 🐑 next to the biggest loser in the night's results (on by default).
-export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200], rounding: DEFAULT_ROUNDING, sheep: true };
+export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200], rounding: DEFAULT_ROUNDING };
 
 // The whole state is one table. With a backend later this maps onto a
 // `tables` row (settings, status) plus `players` and `buy_ins` rows.
@@ -43,7 +42,7 @@ export function cleanSettings(settings) {
   const amounts = [...new Set((settings?.rebuyAmounts ?? []).filter(positiveInt))].sort((a, b) => a - b);
   const rebuyAmounts =
     amounts.length >= MIN_REBUY_BUTTONS ? amounts.slice(0, MAX_REBUY_BUTTONS) : DEFAULT_SETTINGS.rebuyAmounts;
-  return { initialBuyIn, rebuyAmounts, rounding: cleanRounding(settings?.rounding), sheep: settings?.sheep !== false };
+  return { initialBuyIn, rebuyAmounts, rounding: cleanRounding(settings?.rounding) };
 }
 
 // How a player left mid-game. The same labels and icons as the quick results on
@@ -250,8 +249,6 @@ export function gameReducer(state, action) {
         ...state,
         settings: cleanSettings({ ...state.settings, initialBuyIn: action.initialBuyIn, rebuyAmounts: action.rebuyAmounts }),
       };
-    case 'setSheep':
-      return { ...state, settings: { ...state.settings, sheep: Boolean(action.on) } };
     case 'setView':
       return { ...state, view: action.view };
     case 'openTable':
