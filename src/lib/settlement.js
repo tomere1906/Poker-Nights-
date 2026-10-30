@@ -43,7 +43,9 @@ const EMPTY_PLAN = { small: 0, count: 0, min: Infinity, transfers: [] };
 // Exhaustive search over "settle one side of a loser/winner pair" steps.
 // Every tree-shaped settlement (the minimum-transfer kind) is reachable this
 // way, and memoizing on the balance vector keeps it fast for <= 9 players.
-function bestPlan(balances, min) {
+// free: index pairs (i * 64 + j) that already have a row (cash), so a transfer
+// there adds no row; `count` counts rows.
+function bestPlan(balances, min, free = null) {
   const memo = new Map();
 
   function solve(bal) {
@@ -63,7 +65,7 @@ function bestPlan(balances, min) {
         const sub = solve(next);
         const plan = {
           small: sub.small + (amount < min ? 1 : 0),
-          count: sub.count + 1,
+          count: sub.count + (free?.has(i * 64 + j) ? 0 : 1),
           min: Math.min(sub.min, amount),
           transfers: [[i, j, amount], ...sub.transfers],
         };
@@ -210,12 +212,18 @@ function planWithoutSmall(bal, minCount, currentSmall, min) {
 
 // Transfers that settle these balances ([{ id, net }], summing to 0), with
 // every amount a multiple of unit (when the balances are).
-function planTransfers(balances, unit) {
+// freePairs: Set of "from>to" ids that already have a row (cash), preferred.
+function planTransfers(balances, unit, freePairs = null) {
   const active = balances.filter((e) => e.net !== 0);
   if (active.some((e) => e.net % unit !== 0)) unit = 1;
   const bal = active.map((e) => e.net / unit);
   const min = Math.ceil(MIN_TRANSFER / unit);
-  let plan = bestPlan(bal, min);
+  let free = null;
+  if (freePairs?.size) {
+    free = new Set();
+    active.forEach((a, i) => active.forEach((b, j) => freePairs.has(a.id + '>' + b.id) && free.add(i * 64 + j)));
+  }
+  let plan = bestPlan(bal, min, free);
   // Each player with a tiny result needs one small transfer; one transfer can
   // cover a tiny loser and a tiny winner together. Below that, nothing to gain.
   const tinyLosers = bal.filter((b) => b < 0 && -b < min).length;
@@ -276,18 +284,111 @@ export function cashByPayer(cash) {
   return [...total].map(([from, amount]) => ({ from, amount })).sort((a, b) => b.amount - a.amount);
 }
 
-// Marks how much of each payer's rows is cash. A payer's cash covers their
-// rows; what's left (their loss minus their cash) goes into a single row as the
-// transfer (an exact match first, else the smallest row that fits), so each
-// payer makes at most one transfer and nothing is split further. rows: the
-// plan's [{ from, to, amount }]; paid: [{ from, amount }] one per payer, each
-// within the payer's loss. Returns the rows with `cash` (0..amount).
+export const CASH_SPLIT_STEP = 50;
+const MAX_CASH_OPTIONS = 400;
+
+// A bill nobody is owed in full (e.g. a 200 when every winner is owed less) is
+// split into multiples of 50 that fit the winners, biggest claims first.
+// Everything else stays whole. bills: [{ from, amount }]; winners: [{ id, net }].
+export function splitUnfitBills(bills, winners) {
+  const most = Math.max(0, ...winners.map((w) => w.net));
+  const out = [];
+  for (const bill of bills) {
+    if (bill.amount <= most) {
+      out.push(bill);
+      continue;
+    }
+    let left = bill.amount;
+    for (const w of [...winners].sort((x, y) => y.net - x.net)) {
+      const piece = Math.min(left, Math.floor(w.net / CASH_SPLIT_STEP) * CASH_SPLIT_STEP);
+      if (piece <= 0) continue;
+      out.push({ ...bill, amount: piece });
+      left -= piece;
+      if (left === 0) break;
+    }
+    if (left > 0) out.push({ ...bill, amount: left });
+  }
+  return out;
+}
+
+// a < b, comparing number arrays element by element.
+function lexLess(a, b) {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+
+// Merges cash and transfers into rows (one per payer → receiver).
+function mergeRows(cashRows, transfers) {
+  const rows = new Map();
+  const add = (from, to, amount, cash) => {
+    const key = from + '>' + to;
+    const row = rows.get(key) ?? { from, to, amount: 0, cash: 0 };
+    row.amount += amount;
+    row.cash += cash;
+    rows.set(key, row);
+  };
+  for (const c of cashRows) add(c.from, c.to, c.amount, c.amount);
+  for (const t of transfers) add(t.from, t.to, t.amount, 0);
+  return [...rows.values()];
+}
+
+// Each bill goes whole to one winner who is still owed at least that much;
+// different bills of one player may go to different winners. Tries the
+// combinations (exact matches first) and keeps the one with the fewest small
+// transfers, then the fewest rows, then the fewest transfers. Returns rows
+// [{ from, to, amount, cash }], or null when the bills can't all be placed.
+function placeBills(nets, bills, unit) {
+  const winners = nets.filter((e) => e.net > 0);
+  const units = splitUnfitBills(bills, winners).sort((x, y) => y.amount - x.amount);
+  const owed = new Map(winners.map((w) => [w.id, w.net]));
+  const placed = [];
+  let best = null;
+  let tried = 0;
+
+  function evaluate() {
+    const balance = new Map(nets.map((e) => [e.id, e.net]));
+    for (const p of placed) {
+      balance.set(p.from, balance.get(p.from) + p.amount);
+      balance.set(p.to, balance.get(p.to) - p.amount);
+    }
+    const free = new Set(placed.map((p) => p.from + '>' + p.to));
+    const transfers = planTransfers([...balance].map(([id, net]) => ({ id, net })), unit, free);
+    const rows = mergeRows(placed, transfers);
+    const score = [transfers.filter((t) => t.amount < MIN_TRANSFER).length, rows.length, transfers.length];
+    if (!best || lexLess(score, best.score)) best = { score, rows };
+  }
+
+  (function place(k) {
+    if (tried >= MAX_CASH_OPTIONS) return;
+    if (k === units.length) {
+      tried++;
+      evaluate();
+      return;
+    }
+    const bill = units[k];
+    const options = [...owed]
+      .filter(([, claim]) => claim >= bill.amount)
+      .sort(([, x], [, y]) => (y === bill.amount) - (x === bill.amount) || y - x);
+    for (const [id, claim] of options) {
+      owed.set(id, claim - bill.amount);
+      placed.push({ from: bill.from, to: id, amount: bill.amount });
+      place(k + 1);
+      placed.pop();
+      owed.set(id, claim);
+    }
+  })(0);
+
+  return best?.rows ?? null;
+}
+
+// Fallback when the bills can't all be placed whole: the regular rows, with
+// each payer's cash covering them and the rest transferred in one row.
 function markCash(rows, paid) {
   const cashOf = new Map(paid.map((c) => [c.from, c.amount]));
   const out = rows.map((r) => ({ ...r, cash: 0 }));
   for (const [payer, cash] of cashOf) {
     const mine = out.filter((r) => r.from === payer);
-    let rest = mine.reduce((sum, r) => sum + r.amount, 0) - cash; // still transferred
+    let rest = mine.reduce((sum, r) => sum + r.amount, 0) - cash;
     const fits = mine.filter((r) => r.amount >= rest).sort((x, y) => x.amount - y.amount);
     const single = rest > 0 && (fits.find((r) => r.amount === rest) ?? fits[0]);
     for (const r of [...(single ? [single] : []), ...mine.filter((r) => r !== single).sort((x, y) => y.amount - x.amount)]) {
@@ -305,12 +406,18 @@ function markCash(rows, paid) {
 // cash: [{ from, amount }] paid in cash when settling (e.g. a player who lost
 // 250 and left 200). Cash never exceeds a payer's loss (capCash), so there is
 // never change to give back.
-// Returns the rounded nets (the night's results), the cash paid per player
-// (cashPaid [{ from, amount }]) and one list of rows [{ from, to, amount, cash }]:
-// payer → receiver, `cash` of the amount paid in cash (0 = all by transfer).
-// Each payer transfers only what their cash didn't cover, in one row.
+// Each cash entry is one bill: it goes whole to one winner (a bill nobody is
+// owed in full is split into multiples of 50). Returns the rounded nets (the
+// night's results), the cash paid per player (cashPaid [{ from, amount }]) and
+// one list of rows [{ from, to, amount, cash }]: payer → receiver, `cash` of
+// the amount paid in cash (0 = all by transfer); the fewest rows.
 export function settle(entries, { unit = 1, cash = [] } = {}) {
   const nets = roundNets(entries, unit);
-  const paid = cashByPayer(capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets));
-  return { nets, cashPaid: paid, transfers: markCash(planTransfers(nets, unit), paid) };
+  const bills = capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets);
+  const cashPaid = cashByPayer(bills);
+  if (bills.length === 0) return { nets, cashPaid, transfers: planTransfers(nets, unit).map((t) => ({ ...t, cash: 0 })) };
+  const loss = new Map(nets.map((e) => [e.id, e.net]));
+  const rows = placeBills(nets, bills, unit) ?? markCash(planTransfers(nets, unit), cashPaid);
+  // Group by payer (biggest loser first), biggest row first.
+  return { nets, cashPaid, transfers: rows.sort((x, y) => loss.get(x.from) - loss.get(y.from) || y.amount - x.amount) };
 }

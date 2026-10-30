@@ -110,7 +110,7 @@ function ExitPicker({ player, onPick }) {
   );
 }
 
-// After a losing exit: "השאיר מזומן?" (how much, up to the loss), or no.
+// After a losing exit: "השאיר מזומן?" (bills, up to the loss), or no.
 function LeftCash({ player, players, loss, alreadyPaid, onDone }) {
   const max = Math.max(0, loss - alreadyPaid);
   return (
@@ -121,7 +121,6 @@ function LeftCash({ player, players, loss, alreadyPaid, onDone }) {
         players={players}
         payerId={player.id}
         maxFor={() => max}
-        defaultAmount={max}
         saveLabel="השאיר מזומן ✓"
         onSave={(cash) => onDone(cash)}
         onCancel={() => onDone(null)}
@@ -158,8 +157,8 @@ export default function PlayerSheet({
   const lastBuyIn = player.buyIns[count - 1];
   const times = timesOf(player);
   const exit = player.out && EXITS[player.out.kind];
-  // A player who is out gets no buy-ins until they're back.
-  const canAdd = (canManage || canSelfAdd) && !player.out;
+  // A player who is out (or leaving right now) gets no buy-ins until they're back.
+  const canAdd = (canManage || canSelfAdd) && !player.out && !pickingExit && !pendingExit;
 
   return (
     <BottomSheet

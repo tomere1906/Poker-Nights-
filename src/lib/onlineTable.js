@@ -200,8 +200,9 @@ function makeActions(view) {
   const tableId = view.id;
   const players = () => [...view.players].sort((a, b) => a.seat - b.seat);
 
-  async function insertCash({ from, amount }) {
-    must(await supabase.from('cash_payments').insert({ table_id: tableId, payer_id: from, amount }));
+  // One row per bill: each is an indivisible unit in the settlement.
+  async function insertCash({ from, bills }) {
+    must(await supabase.from('cash_payments').insert(bills.map((amount) => ({ table_id: tableId, payer_id: from, amount }))));
   }
 
   async function setSeat(playerId, seat) {
@@ -288,7 +289,7 @@ function makeActions(view) {
     },
 
     // Left mid-game: the seat stays, the exit amount prefills the end-game screen.
-    // cash: { from, amount } paid into the pot when leaving, or null.
+    // cash: { from, bills } left when leaving, or null.
     async markOut(player, kind, amount, cash = null) {
       const out = { out_kind: kind, out_chips: exitChips(player, kind, amount) };
       must(await supabase.from('table_players').update(out).eq('id', player.id));

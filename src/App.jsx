@@ -202,7 +202,7 @@ export default function App() {
           cash={state.cash}
           onMarkOut={(player, kind, chips, cash) => {
             dispatch({ type: 'markOut', id: player.id, kind, chips });
-            if (cash) dispatch({ type: 'addCash', ...cash });
+            for (const amount of cash?.bills ?? []) dispatch({ type: 'addCash', from: cash.from, amount });
           }}
           onMarkBack={(player) => dispatch({ type: 'markBack', id: player.id })}
           onStart={() => dispatch({ type: 'startGame' })}
@@ -216,7 +216,7 @@ export default function App() {
           state={state}
           onMode={(mode) => dispatch({ type: 'setEndMode', mode })}
           onFinal={(id, amount) => dispatch({ type: 'setFinal', id, amount })}
-          onAddCash={(cash) => dispatch({ type: 'addCash', ...cash })}
+          onAddCash={(cash) => cash.bills.forEach((amount) => dispatch({ type: 'addCash', from: cash.from, amount }))}
           onRemoveCash={(id) => dispatch({ type: 'removeCash', id })}
           onBack={() => setView('table')}
           onSettle={() => {

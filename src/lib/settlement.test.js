@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TRANSFER, ROUNDING_UNITS, cashNote, cashRoom, roundNets, roundTo, settle } from './settlement.js';
+import { MIN_TRANSFER, ROUNDING_UNITS, cashNote, cashRoom, roundNets, roundTo, settle, splitUnfitBills } from './settlement.js';
 
 const entries = (obj) => Object.entries(obj).map(([id, net]) => ({ id, net }));
 
@@ -175,7 +175,7 @@ describe('cash paid when settling', () => {
   const transferOf = (rows, who) => rows.filter((r) => r.from === who).reduce((s, r) => s + r.amount - r.cash, 0);
 
   // One list of rows: everyone ends at 0, each payer's cash is exactly what they
-  // paid (never more than their loss), and at most one row per payer is mixed.
+  // paid (never more than their loss), one row per payer → receiver.
   function expectRows({ nets, cashPaid, transfers }) {
     const balance = new Map(nets.map((e) => [e.id, e.net]));
     for (const r of transfers) {
@@ -188,8 +188,6 @@ describe('cash paid when settling', () => {
     for (const { id, net } of nets) {
       expect(sum(transfers, 'from', id, 'cash')).toBe(sum(cashPaid, 'from', id));
       expect(sum(cashPaid, 'from', id)).toBeLessThanOrEqual(Math.max(0, -net));
-      // Cash is never split more than needed: at most one row per payer mixes cash and transfer.
-      expect(transfers.filter((r) => r.from === id && r.cash > 0 && r.cash < r.amount).length).toBeLessThanOrEqual(1);
     }
     // One row per payer → receiver pair (cash and transfer merged).
     expect(new Set(transfers.map((r) => r.from + '>' + r.to)).size).toBe(transfers.length);
@@ -208,10 +206,9 @@ describe('cash paid when settling', () => {
     expect(transferOf(result.transfers, 'yuri')).toBe(50);
     // Nadav's 200 cash and 50 transfer to the same winner are one row.
     expect(result.transfers.find((r) => r.from === 'nadav')).toMatchObject({ amount: 250, cash: 200 });
-    // The night's results and the rows are the plain settlement; cash only marks them.
+    // The night's results don't depend on how they were paid.
     const plain = settle(night, { unit: 1 });
     expect(result.nets).toEqual(plain.nets);
-    expect(result.transfers.map(({ cash: _, ...r }) => r)).toEqual(plain.transfers.map(({ cash: _, ...r }) => r));
     expect(plain.transfers.every((r) => r.cash === 0)).toBe(true);
   });
 
@@ -222,8 +219,57 @@ describe('cash paid when settling', () => {
     expect(result.transfers.every((r) => r.amount % 10 === 0)).toBe(true);
     expect(transferOf(result.transfers, 'nadav')).toBe(50);
     expect(transferOf(result.transfers, 'fouad')).toBe(10);
-    // Rows stay ≥ 20 ₪; only Fouad's last 10 is a small transfer (all he still owes).
-    expect(result.transfers.every((r) => r.amount >= MIN_TRANSFER)).toBe(true);
+    // Rows stay ≥ 20 ₪; the only small one is Fouad's last 10 (all he still owes).
+    expect(result.transfers.filter((r) => r.amount < MIN_TRANSFER)).toEqual([expect.objectContaining({ from: 'fouad', amount: 10, cash: 0 })]);
+    // Each bill went whole: Nadav's 200 to one winner, Fouad's 150 to one winner.
+    expect(result.transfers.filter((r) => r.cash > 0).map((r) => r.cash).sort()).toEqual([150, 200]);
+  });
+
+  it('Ben −430 with one 200 bill: the bill goes whole to one winner, fewest rows', () => {
+    const result = settle(entries({ ben: -430, shaked: -250, ido: -150, fouad: 270, kashkash: 160, tomer: 400 }), {
+      cash: [{ from: 'ben', amount: 200 }],
+    });
+    expectRows(result);
+    expect(result.transfers).toEqual([
+      { from: 'ben', to: 'fouad', amount: 270, cash: 200 },
+      { from: 'ben', to: 'kashkash', amount: 160, cash: 0 },
+      { from: 'shaked', to: 'tomer', amount: 250, cash: 0 },
+      { from: 'ido', to: 'tomer', amount: 150, cash: 0 },
+    ]);
+    expect(cashNote(result.transfers[0])).toBe('200 מזומן · 70 העברה');
+  });
+
+  it('two 50 bills can go to two different winners', () => {
+    const result = settle(entries({ a: -100, b: 50, c: 50 }), {
+      cash: [
+        { from: 'a', amount: 50 },
+        { from: 'a', amount: 50 },
+      ],
+    });
+    expectRows(result);
+    expect(result.transfers).toEqual([
+      { from: 'a', to: 'b', amount: 50, cash: 50 },
+      { from: 'a', to: 'c', amount: 50, cash: 50 },
+    ]);
+  });
+
+  it('a bill is never split while a winner can take it whole', () => {
+    // 200 fits only Tomer (250): it goes there whole, not 100 + 100.
+    const result = settle(entries({ a: -400, b: 100, c: 50, tomer: 250 }), { cash: [{ from: 'a', amount: 200 }] });
+    expectRows(result);
+    expect(result.transfers.find((r) => r.to === 'tomer')).toMatchObject({ cash: 200 });
+    expect(result.transfers.filter((r) => r.cash > 0)).toHaveLength(1);
+  });
+
+  it('a bill nobody is owed in full is split into multiples of 50', () => {
+    const result = settle(entries({ a: -200, b: 100, c: 100 }), { cash: [{ from: 'a', amount: 200 }] });
+    expectRows(result);
+    expect(result.transfers).toEqual([
+      { from: 'a', to: 'b', amount: 100, cash: 100 },
+      { from: 'a', to: 'c', amount: 100, cash: 100 },
+    ]);
+    expect(splitUnfitBills([{ from: 'a', amount: 200 }], [{ id: 'b', net: 130 }, { id: 'c', net: 120 }]).map((x) => x.amount)).toEqual([100, 100]);
+    expect(splitUnfitBills([{ from: 'a', amount: 100 }], [{ id: 'b', net: 130 }]).map((x) => x.amount)).toEqual([100]);
   });
 
   it('Nadav lost 250 and paid 200: one row, 200 cash + 50 transfer', () => {
