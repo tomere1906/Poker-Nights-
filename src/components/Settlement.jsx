@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { cashNote, settle, sheepIds } from '../lib/settlement.js';
+import { cashParts, settle, sheepIds } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
@@ -19,6 +19,42 @@ export function NewGameButton({ onNewGame }) {
     >
       {confirm ? 'בטוח? כל הנתונים יימחקו – הקש שוב' : 'משחק חדש 🃏'}
     </button>
+  );
+}
+
+// The middle of a row: the amount and the arrow. With cash the amount is green
+// with a 💵 before it, and the arrow line says "← מזומן", or for a mixed row
+// "← 200 מזומן + 70 העברה" (the cash part green).
+function RowAmount({ row }) {
+  const parts = cashParts(row);
+  if (!parts) {
+    return (
+      <div className="flex shrink-0 flex-col items-center px-1">
+        <span className="text-lg font-extrabold text-amber-300">{formatShekel(row.amount)}</span>
+        <span className="-mt-1 text-xl leading-none text-slate-400">←</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex shrink-0 flex-col items-center px-1">
+      <span className="whitespace-nowrap text-lg font-extrabold text-emerald-300">
+        <span className="me-1 text-base" aria-hidden>
+          💵
+        </span>
+        {formatShekel(row.amount)}
+      </span>
+      <span className="max-w-[8.5rem] text-center text-sm font-bold leading-tight">
+        <span className="text-slate-400">← </span>
+        {parts.transfer ? (
+          <>
+            <span className="whitespace-nowrap text-emerald-300">{parts.cash} מזומן</span>{' '}
+            <span className="whitespace-nowrap text-slate-400">+ {parts.transfer} העברה</span>
+          </>
+        ) : (
+          <span className="text-emerald-300">מזומן</span>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -135,23 +171,12 @@ export default function Settlement({
                   </div>
                   <PlayerName name={nameOf(t.from)} className="font-bold" />
                 </div>
-                <div className="flex shrink-0 flex-col items-center px-1">
-                  <span className="text-lg font-extrabold text-amber-300">{formatShekel(t.amount)}</span>
-                  <span className="-mt-1 text-xl leading-none text-slate-400">←</span>
-                </div>
+                <RowAmount row={t} />
                 <div className="flex min-w-0 flex-1 flex-row-reverse items-center gap-2">
                   <Avatar player={byId.get(t.to)} size="h-10 w-10 text-sm" />
                   <PlayerName name={nameOf(t.to)} className="text-end font-bold" />
                 </div>
               </div>
-              {/* The cash label: its own line under the row, so it never squeezes the names. */}
-              {cashNote(t) && (
-                <div className="mt-2 flex justify-center">
-                  <span className="rounded-full bg-emerald-400/15 px-3 text-lg font-extrabold leading-snug text-emerald-300">
-                    {cashNote(t)}
-                  </span>
-                </div>
-              )}
             </li>
           ))}
         </ul>

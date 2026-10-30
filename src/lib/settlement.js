@@ -276,12 +276,12 @@ export function sheepIds(nets) {
   return worst < 0 ? new Set(nets.filter((e) => e.net === worst).map((e) => e.id)) : new Set();
 }
 
-// The small note under a row's amount: "💵 מזומן" when it's all cash,
-// "200 מזומן · 70 העברה" when it's both, null for a plain transfer.
-export function cashNote(row) {
+// How a row was paid, for its display: null for a plain transfer, else
+// { cash, transfer } (transfer 0 = all cash). Shown as a green amount and
+// "← מזומן" / "← 200 מזומן + 70 העברה" under it.
+export function cashParts(row) {
   if (!row.cash) return null;
-  if (row.cash >= row.amount) return '💵 מזומן';
-  return `${row.cash} מזומן · ${row.amount - row.cash} העברה`;
+  return { cash: Math.min(row.cash, row.amount), transfer: Math.max(0, row.amount - row.cash) };
 }
 
 // One line per payer: [{ from, amount }], biggest first.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TRANSFER, ROUNDING_UNITS, cashNote, cashRoom, roundNets, roundTo, settle, sheepIds, splitUnfitBills } from './settlement.js';
+import { MIN_TRANSFER, ROUNDING_UNITS, cashParts, cashRoom, roundNets, roundTo, settle, sheepIds, splitUnfitBills } from './settlement.js';
 
 const entries = (obj) => Object.entries(obj).map(([id, net]) => ({ id, net }));
 
@@ -236,7 +236,7 @@ describe('cash paid when settling', () => {
       { from: 'shaked', to: 'tomer', amount: 250, cash: 0 },
       { from: 'ido', to: 'tomer', amount: 150, cash: 0 },
     ]);
-    expect(cashNote(result.transfers[0])).toBe('200 מזומן · 70 העברה');
+    expect(cashParts(result.transfers[0])).toEqual({ cash: 200, transfer: 70 });
   });
 
   it('two 50 bills can go to two different winners', () => {
@@ -313,11 +313,11 @@ describe('cash paid when settling', () => {
     expect(two.cashPaid).toEqual([{ from: 'a', amount: 100 }]);
   });
 
-  it('cashNote: the small label under the amount', () => {
-    expect(cashNote({ amount: 200, cash: 200 })).toBe('💵 מזומן');
-    expect(cashNote({ amount: 270, cash: 200 })).toBe('200 מזומן · 70 העברה');
-    expect(cashNote({ amount: 100, cash: 0 })).toBe(null);
-    expect(cashNote({ amount: 100 })).toBe(null);
+  it('cashParts: how a row was paid', () => {
+    expect(cashParts({ amount: 200, cash: 200 })).toEqual({ cash: 200, transfer: 0 });
+    expect(cashParts({ amount: 270, cash: 200 })).toEqual({ cash: 200, transfer: 70 });
+    expect(cashParts({ amount: 100, cash: 0 })).toBe(null);
+    expect(cashParts({ amount: 100 })).toBe(null);
   });
 
   it('cashRoom: how much more cash a player may pay', () => {

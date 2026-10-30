@@ -6,12 +6,12 @@ import { formatShekel } from './format.js';
 import { initials } from './game.js';
 import { paletteColor } from './colors.js';
 import { splitName } from './names.js';
-import { cashNote } from './settlement.js';
+import { cashParts } from './settlement.js';
 
 export const CARD_WIDTH = 390; // CSS px, like a phone screen
 const PAD = 16;
 const ROW_H = 64;
-const ROW_NOTE_H = 92; // a row with a "💵 מזומן" label under the amount
+const ROW_MIXED_H = 82; // a row paid partly in cash: two lines under the amount
 const ROW_GAP = 8;
 const PILL_H = 30;
 const PILL_TWO_LINES_H = 46;
@@ -25,7 +25,7 @@ const COLORS = {
   text: '#f1f5f9',
   muted: '#94a3b8',
   amount: '#fcd34d',
-  note: { bg: 'rgba(52, 211, 153, 0.15)', fg: '#6ee7b7' },
+  cash: '#6ee7b7',
   win: { bg: 'rgba(52, 211, 153, 0.15)', fg: '#6ee7b7' },
   loss: { bg: 'rgba(251, 113, 133, 0.15)', fg: '#fda4af' },
   even: { bg: 'rgba(255, 255, 255, 0.1)', fg: '#cbd5e1' },
@@ -133,7 +133,21 @@ function nameWidth(ctx, name, fonts) {
   return Math.max(w1, ctx.measureText(rest).width);
 }
 
-const rowHeight = (t) => (cashNote(t) ? ROW_NOTE_H : ROW_H);
+const rowHeight = (t) => (cashParts(t)?.transfer ? ROW_MIXED_H : ROW_H);
+
+// Draws colored pieces of one line, centered on cx (RTL: the first piece on the right).
+function drawPieces(ctx, pieces, cx, y, font) {
+  ctx.font = font;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  const widths = pieces.map(([text]) => ctx.measureText(text).width);
+  let x = cx + widths.reduce((s, w) => s + w, 0) / 2;
+  pieces.forEach(([text, color], i) => {
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+    x -= widths[i];
+  });
+}
 
 // data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }],
 //         sheep: Set of ids with "🐑 כבש הערב", players: Map(id -> player) }
@@ -201,7 +215,7 @@ export function drawSettlement(data, scale = 3) {
   const half = (CARD_WIDTH - 2 * PAD) / 2;
   for (const t of data.transfers) {
     const h = rowHeight(t);
-    const note = cashNote(t);
+    const parts = cashParts(t);
     ctx.fillStyle = 'rgba(30, 41, 59, 0.7)';
     roundRect(ctx, PAD, y, CARD_WIDTH - 2 * PAD, h, 24);
     const mid = y + h / 2;
@@ -230,24 +244,28 @@ export function drawSettlement(data, scale = 3) {
     }
     drawName(ctx, nameOf(t.to), PAD + 12 + 2 * r + 8, mid, nameMax, 'left');
 
-    // Middle: amount, arrow, and the cash label under them.
-    const top = note ? mid - 22 : mid - 8;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = COLORS.amount;
-    ctx.font = `800 18px ${FONT}`;
-    ctx.fillText(formatShekel(t.amount), CARD_WIDTH / 2, top);
-    ctx.fillStyle = COLORS.muted;
-    ctx.font = `400 20px ${FONT}`;
-    ctx.fillText('←', CARD_WIDTH / 2, top + 19);
-    if (note) {
-      // The same size as the amount above it.
+    // Middle: the amount and the arrow line. Cash: a green amount with 💵 before
+    // it and "← מזומן" / "← 200 מזומן + 70 העברה" under it.
+    const cx = CARD_WIDTH / 2;
+    if (!parts) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = COLORS.amount;
       ctx.font = `800 18px ${FONT}`;
-      const w = ctx.measureText(note).width + 24;
-      ctx.fillStyle = COLORS.note.bg;
-      roundRect(ctx, CARD_WIDTH / 2 - w / 2, top + 32, w, 26, 13);
-      ctx.fillStyle = COLORS.note.fg;
-      ctx.fillText(note, CARD_WIDTH / 2, top + 45);
+      ctx.fillText(formatShekel(t.amount), cx, mid - 8);
+      ctx.fillStyle = COLORS.muted;
+      ctx.font = `400 20px ${FONT}`;
+      ctx.fillText('←', cx, mid + 11);
+    } else {
+      const top = parts.transfer ? mid - 19 : mid - 9;
+      drawPieces(ctx, [['💵 ', COLORS.cash], [formatShekel(t.amount), COLORS.cash]], cx, top, `800 18px ${FONT}`);
+      const lineFont = `700 14px ${FONT}`;
+      if (parts.transfer) {
+        drawPieces(ctx, [['← ', COLORS.muted], [`${parts.cash} מזומן`, COLORS.cash]], cx, top + 21, lineFont);
+        drawPieces(ctx, [[`+ ${parts.transfer} העברה`, COLORS.muted]], cx, top + 39, lineFont);
+      } else {
+        drawPieces(ctx, [['← ', COLORS.muted], ['מזומן', COLORS.cash]], cx, top + 21, lineFont);
+      }
     }
     y += h + ROW_GAP;
   }
