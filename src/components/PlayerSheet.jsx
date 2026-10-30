@@ -5,6 +5,7 @@ import { PALETTE } from '../lib/colors.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
 import Avatar from './Avatar.jsx';
+import PlayerName from './PlayerName.jsx';
 import CashForm from './CashForm.jsx';
 
 function buyInCountLabel(count) {
@@ -167,7 +168,9 @@ export default function PlayerSheet({
         <div className="mb-5 flex items-center gap-3">
           <Avatar player={player} size="h-14 w-14 text-xl" />
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-xl font-bold">{player.name}</h2>
+            <h2 className="text-xl font-bold">
+              <PlayerName name={player.name} />
+            </h2>
             <button
               type="button"
               onClick={() => setShowHistory((v) => !v)}

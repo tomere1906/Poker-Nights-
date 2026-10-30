@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { EXITS, netOf, potTotal, totalIn } from '../lib/game.js';
 import { formatShekel, parseAmount } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
+import PlayerName from './PlayerName.jsx';
 import CashForm from './CashForm.jsx';
 import { cashRoom } from '../lib/settlement.js';
 
@@ -209,7 +210,7 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
               <div className="flex items-center gap-2">
                 <Avatar player={p} size="h-11 w-11 text-base" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold">{p.name}</p>
+                  <PlayerName name={p.name} className="font-bold" />
                   <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-400">
                     <span>בפנים {formatShekel(totalIn(p))}</span>
                     {net !== null && <NetBadge net={net} />}

@@ -4,6 +4,7 @@ import { MATE_SORTS, personalStats, sortMates, withAverages } from '../lib/stats
 import { formatDate, formatShekel } from '../lib/format.js';
 import { suggestedColor } from '../lib/colors.js';
 import Avatar from './Avatar.jsx';
+import PlayerName from './PlayerName.jsx';
 import BottomSheet from './BottomSheet.jsx';
 import NetChart from './NetChart.jsx';
 
@@ -255,10 +256,10 @@ function Mates({ mates }) {
             <span className="w-5 text-center text-sm text-slate-500">{i + 1}</span>
             <Avatar player={{ name: m.name, color: m.color ?? suggestedColor(m.key) }} size="h-10 w-10 text-sm" />
             <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-1.5 truncate font-bold">
-                {m.name}
-                {m.isGuest && <span className="rounded-full bg-white/10 px-1.5 text-[11px] font-medium text-slate-300">אורח</span>}
-              </p>
+              <div className="flex items-center gap-1.5 font-bold">
+                <PlayerName name={m.name} />
+                {m.isGuest && <span className="shrink-0 rounded-full bg-white/10 px-1.5 text-[11px] font-medium text-slate-300">אורח</span>}
+              </div>
               <p className="text-xs text-slate-400">
                 {m.games === 1 ? 'משחק אחד' : `${m.games} משחקים`} · ממוצע {signed(m.average)}
               </p>

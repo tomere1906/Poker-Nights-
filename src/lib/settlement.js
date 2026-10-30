@@ -234,8 +234,7 @@ function planTransfers(balances, unit) {
   );
 }
 
-// Cash a player already paid ({ from, amount }) into the night's cash pot:
-// valid entries only. Nobody "holds" the cash; the pot is split among winners.
+// Cash a player paid ({ from, amount }): valid entries only. Nobody "holds" it.
 export function cleanCash(cash, ids) {
   return (cash ?? []).filter((c) => Number.isInteger(c.amount) && c.amount > 0 && ids.has(c.from));
 }
@@ -262,6 +261,14 @@ export function cashRoom(net, cash, playerId) {
   return Math.max(0, -(net ?? 0) - paid);
 }
 
+// The small note under a row's amount: "💵 מזומן" when it's all cash,
+// "200 מזומן · 70 העברה" when it's both, null for a plain transfer.
+export function cashNote(row) {
+  if (!row.cash) return null;
+  if (row.cash >= row.amount) return '💵 מזומן';
+  return `${row.cash} מזומן · ${row.amount - row.cash} העברה`;
+}
+
 // One line per payer: [{ from, amount }], biggest first.
 export function cashByPayer(cash) {
   const total = new Map();
@@ -269,91 +276,41 @@ export function cashByPayer(cash) {
   return [...total].map(([from, amount]) => ({ from, amount })).sort((a, b) => b.amount - a.amount);
 }
 
-function combinations(list, k, start = 0, picked = [], out = []) {
-  if (picked.length === k) out.push(picked.slice());
-  else
-    for (let i = start; i <= list.length - (k - picked.length); i++) {
-      picked.push(list[i]);
-      combinations(list, k, i + 1, picked, out);
-      picked.pop();
+// Marks how much of each payer's rows is cash. A payer's cash covers their
+// rows; what's left (their loss minus their cash) goes into a single row as the
+// transfer (an exact match first, else the smallest row that fits), so each
+// payer makes at most one transfer and nothing is split further. rows: the
+// plan's [{ from, to, amount }]; paid: [{ from, amount }] one per payer, each
+// within the payer's loss. Returns the rows with `cash` (0..amount).
+function markCash(rows, paid) {
+  const cashOf = new Map(paid.map((c) => [c.from, c.amount]));
+  const out = rows.map((r) => ({ ...r, cash: 0 }));
+  for (const [payer, cash] of cashOf) {
+    const mine = out.filter((r) => r.from === payer);
+    let rest = mine.reduce((sum, r) => sum + r.amount, 0) - cash; // still transferred
+    const fits = mine.filter((r) => r.amount >= rest).sort((x, y) => x.amount - y.amount);
+    const single = rest > 0 && (fits.find((r) => r.amount === rest) ?? fits[0]);
+    for (const r of [...(single ? [single] : []), ...mine.filter((r) => r !== single).sort((x, y) => y.amount - x.amount)]) {
+      const transfer = Math.min(rest, r.amount);
+      r.cash = r.amount - transfer;
+      rest -= transfer;
     }
+  }
   return out;
-}
-
-const MAX_SPLIT_CANDIDATES = 24;
-
-// a < b, comparing number arrays element by element.
-function lexLess(a, b) {
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
-  return false;
-}
-
-// Splits the cash pot among winners in as few lines as possible: the fewest
-// winners whose winnings cover the pot, all paid in full except at most one.
-// Among those, the split that leaves the fewest (and no tiny) transfers.
-// owed: [{ id, net }] after the cash paid (> 0 = still owed). Returns [{ to, amount }].
-function splitCash(pot, owed, unit) {
-  const winners = owed.filter((e) => e.net > 0).sort((a, b) => b.net - a.net);
-  let k = 0;
-  for (let covered = 0; covered < pot && k < winners.length; k++) covered += winners[k].net;
-
-  const candidates = [];
-  for (const group of combinations(winners, k)) {
-    const rest = group.reduce((sum, w) => sum + w.net, 0) - pot; // left to the partly paid winner
-    if (rest < 0) continue;
-    if (rest === 0) candidates.push({ lines: group.map((w) => ({ to: w.id, amount: w.net })), rest });
-    else
-      for (const partial of group) {
-        if (partial.net <= rest) continue;
-        candidates.push({
-          lines: group.map((w) => ({ to: w.id, amount: w === partial ? w.net - rest : w.net })),
-          rest,
-        });
-      }
-  }
-  // Most promising first (an exact split, then a remainder that is a real
-  // transfer, not a tiny one); then compare the transfers each leaves.
-  const tiny = (n) => n > 0 && n < MIN_TRANSFER;
-  candidates.sort((x, y) => (y.rest === 0) - (x.rest === 0) || tiny(x.rest) - tiny(y.rest));
-
-  let best = null;
-  for (const candidate of candidates.slice(0, MAX_SPLIT_CANDIDATES)) {
-    const got = new Map(candidate.lines.map((l) => [l.to, l.amount]));
-    const transfers = planTransfers(owed.map((e) => ({ id: e.id, net: e.net - (got.get(e.id) ?? 0) })), unit);
-    const score = [
-      transfers.filter((t) => t.amount < MIN_TRANSFER).length,
-      transfers.length,
-      candidate.lines.filter((l) => tiny(l.amount)).length,
-    ];
-    if (!best || lexLess(score, best.score)) best = { score, lines: candidate.lines, transfers };
-  }
-  return best ?? { lines: [], transfers: planTransfers(owed, unit) };
 }
 
 // entries: [{ id, net }] where net = final chips − total buy-in (may be fractional).
 // unit: "עיגול סכומים" (1 / 5 / 10 / 50). Every net and every transfer is a
 // multiple of it: the plan is searched in units and scaled back.
-// cash: [{ from, amount }] paid in cash into the night's pot (e.g. a player who
-// lost 250 and left 200). Cash never exceeds a payer's loss (capCash), so there
-// is never change to give back. The pot is split among winners (cashSplit) and
-// only what's still owed is settled by transfers.
+// cash: [{ from, amount }] paid in cash when settling (e.g. a player who lost
+// 250 and left 200). Cash never exceeds a payer's loss (capCash), so there is
+// never change to give back.
 // Returns the rounded nets (the night's results), the cash paid per player
-// (cashPaid [{ from, amount }]), the pot's split (cashSplit [{ to, amount }])
-// and the transfers [{ from, to, amount }].
+// (cashPaid [{ from, amount }]) and one list of rows [{ from, to, amount, cash }]:
+// payer → receiver, `cash` of the amount paid in cash (0 = all by transfer).
+// Each payer transfers only what their cash didn't cover, in one row.
 export function settle(entries, { unit = 1, cash = [] } = {}) {
   const nets = roundNets(entries, unit);
-  const paid = capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets);
-  if (paid.length === 0) return { nets, cashPaid: [], cashSplit: [], transfers: planTransfers(nets, unit) };
-
-  // What each player still owes (< 0) or is owed (> 0) after the cash they paid.
-  const owed = new Map(nets.map((e) => [e.id, e.net]));
-  for (const c of paid) owed.set(c.from, owed.get(c.from) + c.amount);
-  const pot = paid.reduce((sum, c) => sum + c.amount, 0);
-  const { lines, transfers } = splitCash(pot, nets.map((e) => ({ id: e.id, net: owed.get(e.id) })), unit);
-  return {
-    nets,
-    cashPaid: cashByPayer(paid),
-    cashSplit: lines.sort((x, y) => y.amount - x.amount),
-    transfers,
-  };
+  const paid = cashByPayer(capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets));
+  return { nets, cashPaid: paid, transfers: markCash(planTransfers(nets, unit), paid) };
 }

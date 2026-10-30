@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { settle } from '../lib/settlement.js';
+import { cashNote, settle } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
+import PlayerName from './PlayerName.jsx';
 import RoundingPicker, { roundingLabel } from './RoundingPicker.jsx';
 
 // "משחק חדש" for the local table: wipes the game after a second tap.
@@ -21,49 +22,13 @@ export function NewGameButton({ onNewGame }) {
   );
 }
 
-// The cash pot, before the transfers:
-//   💵 שולם במזומן    – "נדב שילם 200 ₪", one line per player who paid
-//   💵 חלוקת המזומן   – "300 ₪ לעומר", as few lines as possible
-// Nobody "holds" the cash, so no holder is ever shown.
-export function CashPot({ paid, split, byId }) {
-  const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
-  const Row = ({ id, children }) => (
-    <li className="flex items-center gap-2 rounded-2xl bg-slate-900/60 px-3 py-2">
-      <Avatar player={byId.get(id)} size="h-8 w-8 text-xs" />
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-    </li>
-  );
-  return (
-    <div className="space-y-3">
-      <section className="rounded-3xl bg-amber-300/10 p-3 ring-1 ring-amber-300/20">
-        <h3 className="mb-2 font-bold">💵 שולם במזומן</h3>
-        <ul className="space-y-1.5">
-          {paid.map((c) => (
-            <Row key={c.from} id={c.from}>
-              <b>{nameOf(c.from)}</b> שילם <b className="text-amber-300">{formatShekel(c.amount)}</b>
-            </Row>
-          ))}
-        </ul>
-      </section>
-      <section className="rounded-3xl bg-amber-300/10 p-3 ring-1 ring-amber-300/20">
-        <h3 className="mb-2 font-bold">💵 חלוקת המזומן</h3>
-        <ul className="space-y-1.5">
-          {split.map((l) => (
-            <Row key={l.to} id={l.to}>
-              <b className="text-amber-300">{formatShekel(l.amount)}</b> ל<b>{nameOf(l.to)}</b>
-            </Row>
-          ))}
-        </ul>
-      </section>
-    </div>
-  );
-}
-
 // Who pays whom. entries: [{ id, net }] (any numbers; settle() rounds them to
 // `rounding` and balances them). date: when the game ended (ms; default now).
 // onRoundingChange: shows the "עיגול סכומים" picker (before the game is closed;
-// it depends on the night's amounts). cash: [{ from, amount }] paid into the
-// pot when settling; the pot is split among winners, only the rest is transferred. children: extra buttons under "share".
+// it depends on the night's amounts). cash: [{ from, amount }] paid in cash
+// when settling: one list of rows, each with a small "💵 מזומן" or
+// "200 מזומן · 70 העברה" note; only the rest is transferred.
+// children: extra buttons under "share".
 export default function Settlement({
   players,
   entries,
@@ -83,11 +48,7 @@ export default function Settlement({
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
-  const { nets, transfers, cashPaid, cashSplit } = useMemo(
-    () => settle(entries, { unit: rounding, cash }),
-    [entries, rounding, cash]
-  );
-  const hasCash = cashPaid.length > 0;
+  const { nets, transfers } = useMemo(() => settle(entries, { unit: rounding, cash }), [entries, rounding, cash]);
   const details = [tableName, formatDate(when), roundingLabel(rounding)].filter(Boolean).join(' · ');
 
   // Prepare the image up front: iPhone Safari opens the share sheet only right
@@ -95,18 +56,18 @@ export default function Settlement({
   useEffect(() => {
     let active = true;
     setFile(null);
-    renderSettlementPng({ subtitle: details, date: when, transfers, nets, cashPaid, cashSplit, players: byId })
+    renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId })
       .then((f) => active && setFile(f))
       .catch(() => active && setFile(null));
     return () => {
       active = false;
     };
-  }, [details, when, transfers, nets, cashPaid, cashSplit, byId]);
+  }, [details, when, transfers, nets, byId]);
 
   async function share() {
     setShareState('working');
     try {
-      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, cashPaid, cashSplit, players: byId }));
+      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId }));
       const result = await shareOrDownload(image);
       setShareState(result === 'downloaded' ? 'downloaded' : null);
       if (result === 'downloaded') setTimeout(() => setShareState(null), 2500);
@@ -144,17 +105,8 @@ export default function Settlement({
         </div>
       )}
 
-      {hasCash && (
-        <>
-          <CashPot paid={cashPaid} split={cashSplit} byId={byId} />
-          <h3 className="mt-5 mb-2 font-bold">💸 העברות</h3>
-        </>
-      )}
-
       {transfers.length === 0 ? (
-        <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-lg">
-          {hasCash ? 'אין העברות – הכל שולם במזומן 💵' : 'כולם יצאו מאוזנים 🤝'}
-        </p>
+        <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-lg">כולם יצאו מאוזנים 🤝</p>
       ) : (
         <ul className="space-y-2">
           {transfers.map((t, i) => (
@@ -165,15 +117,20 @@ export default function Settlement({
             >
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <Avatar player={byId.get(t.from)} size="h-10 w-10 text-sm" />
-                <span className="truncate font-bold">{nameOf(t.from)}</span>
+                <PlayerName name={nameOf(t.from)} className="font-bold" />
               </div>
               <div className="flex shrink-0 flex-col items-center px-1">
                 <span className="text-lg font-extrabold text-amber-300">{formatShekel(t.amount)}</span>
                 <span className="-mt-1 text-xl leading-none text-slate-400">←</span>
+                {cashNote(t) && (
+                  <span className="mt-0.5 whitespace-nowrap rounded-full bg-emerald-300/15 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+                    {cashNote(t)}
+                  </span>
+                )}
               </div>
               <div className="flex min-w-0 flex-1 flex-row-reverse items-center gap-2">
                 <Avatar player={byId.get(t.to)} size="h-10 w-10 text-sm" />
-                <span className="truncate font-bold">{nameOf(t.to)}</span>
+                <PlayerName name={nameOf(t.to)} className="text-end font-bold" />
               </div>
             </li>
           ))}
@@ -187,11 +144,12 @@ export default function Settlement({
           .map((e) => (
             <span
               key={e.id}
-              className={`rounded-full px-3 py-1.5 text-sm font-bold ${
+              className={`flex max-w-full items-center gap-1.5 rounded-2xl px-3 py-1.5 text-sm font-bold ${
                 e.net > 0 ? 'bg-emerald-400/15 text-emerald-300' : e.net < 0 ? 'bg-rose-400/15 text-rose-300' : 'bg-white/10 text-slate-300'
               }`}
             >
-              {nameOf(e.id)} {formatShekel(e.net, { signed: true })}
+              <PlayerName name={nameOf(e.id)} />
+              <span className="shrink-0">{formatShekel(e.net, { signed: true })}</span>
             </span>
           ))}
       </div>
