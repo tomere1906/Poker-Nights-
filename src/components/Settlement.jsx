@@ -121,7 +121,18 @@ export default function Settlement({
             >
               <div className="flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <Avatar player={byId.get(t.from)} size="h-10 w-10 text-sm" />
+                  <div className="relative shrink-0">
+                    <Avatar player={byId.get(t.from)} size="h-10 w-10 text-sm" />
+                    {sheepOf.has(t.from) && (
+                      <span
+                        className="absolute -bottom-1.5 -end-2 flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-base leading-none ring-2 ring-slate-800"
+                        role="img"
+                        aria-label="כבש הערב"
+                      >
+                        🐑
+                      </span>
+                    )}
+                  </div>
                   <PlayerName name={nameOf(t.from)} className="font-bold" />
                 </div>
                 <div className="flex shrink-0 flex-col items-center px-1">

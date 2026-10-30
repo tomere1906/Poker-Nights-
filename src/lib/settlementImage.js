@@ -214,6 +214,20 @@ export function drawSettlement(data, scale = 3) {
     ctx.fillStyle = COLORS.text;
     const nameMax = half - 2 * r - 24 - 48;
     drawName(ctx, nameOf(t.from), right - 12 - 2 * r - 8, mid, nameMax, 'right');
+    if (sheep.has(t.from)) {
+      // A 🐑 badge on the payer's avatar (bottom corner, toward the name).
+      const bx = right - 12 - 2 * r + 2;
+      const by = mid + r - 2;
+      ctx.fillStyle = COLORS.page;
+      ctx.beginPath();
+      ctx.arc(bx, by, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = `400 14px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🐑', bx, by + 1);
+      ctx.fillStyle = COLORS.text;
+    }
     drawName(ctx, nameOf(t.to), PAD + 12 + 2 * r + 8, mid, nameMax, 'left');
 
     // Middle: amount, arrow, and the cash label under them.
