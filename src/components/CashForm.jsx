@@ -28,17 +28,17 @@ function PlayerChoice({ players, value, onChange, label }) {
   );
 }
 
-// Cash paid towards a loss: who paid (fixed when payerId is given, else one of
-// payers), how much, and who at the table holds it. maxFor(id): the most that
-// player may still pay (their loss minus cash already recorded); cash is never
-// more than the loss. onSave({ from, holder, amount }).
+// Cash paid into the pot towards a loss: who paid (fixed when payerId is given,
+// else one of payers) and how much. maxFor(id): the most that player may still
+// pay (their loss minus cash already recorded); cash is never more than the
+// loss. Nobody "holds" it: the settlement splits the pot among the winners.
+// onSave({ from, amount }).
 export default function CashForm({
   players,
   payers = players,
   payerId = null,
   maxFor,
   defaultAmount = 0,
-  defaultHolderId = null,
   saveLabel = 'רשום',
   onSave,
   onCancel,
@@ -46,13 +46,10 @@ export default function CashForm({
 }) {
   const [from, setFrom] = useState(payerId);
   const [amount, setAmount] = useState(defaultAmount);
-  const holders = players.filter((p) => p.id !== from);
-  const [holder, setHolder] = useState(defaultHolderId !== payerId ? defaultHolderId : null);
-  const validHolder = holders.some((p) => p.id === holder) ? holder : null;
   const max = from ? maxFor(from) : null;
   const payerName = players.find((p) => p.id === from)?.name ?? 'השחקן';
   const tooMuch = max !== null && amount > max;
-  const ready = from && validHolder && amount > 0 && !tooMuch;
+  const ready = from && amount > 0 && !tooMuch;
 
   return (
     <div className="space-y-3">
@@ -70,12 +67,11 @@ export default function CashForm({
           </p>
         )}
       </div>
-      {from && <PlayerChoice players={holders} value={validHolder} onChange={setHolder} label="אצל מי המזומן?" />}
       <div className="flex gap-2">
         <button
           type="button"
           disabled={!ready}
-          onClick={() => onSave({ from, holder: validHolder, amount })}
+          onClick={() => onSave({ from, amount })}
           className="flex-1 rounded-2xl bg-emerald-400 py-3 font-bold text-slate-900 active:scale-[0.98] disabled:bg-slate-700 disabled:text-slate-400"
         >
           {saveLabel}

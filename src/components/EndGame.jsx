@@ -9,7 +9,7 @@ import { cashRoom } from '../lib/settlement.js';
 // is settled by transfers. Without onAdd/onRemove it's read-only.
 // netOf(player): their profit/loss, or null before it's entered. Only players
 // with a loss can pay cash, and never more than that loss.
-function CashSection({ players, cash, netOf, defaultHolderId, onAdd, onRemove }) {
+function CashSection({ players, cash, netOf, onAdd, onRemove }) {
   const [adding, setAdding] = useState(false);
   const nameOf = (id) => players.find((p) => p.id === id)?.name ?? 'שחקן';
   const netById = new Map(players.map((p) => [p.id, netOf(p)]));
@@ -24,7 +24,7 @@ function CashSection({ players, cash, netOf, defaultHolderId, onAdd, onRemove })
           {cash.map((c) => (
             <li key={c.id} className="flex items-center gap-2 rounded-2xl bg-slate-950/40 px-3 py-2 text-sm">
               <span className="flex-1">
-                <b>{nameOf(c.from)}</b> שילם <b className="text-amber-200">{formatShekel(c.amount)}</b> · אצל <b>{nameOf(c.holder)}</b>
+                <b>{nameOf(c.from)}</b> שילם <b className="text-amber-200">{formatShekel(c.amount)}</b>
               </span>
               {onRemove && (
                 <button
@@ -46,7 +46,6 @@ function CashSection({ players, cash, netOf, defaultHolderId, onAdd, onRemove })
             players={players}
             payers={losers}
             maxFor={(id) => cashRoom(netById.get(id), cash, id)}
-            defaultHolderId={defaultHolderId}
             onSave={(entry) => {
               setAdding(false);
               onAdd(entry);
@@ -112,7 +111,7 @@ function AmountField({ value, onChange, placeholder, inputRef, enterKeyHint }) {
   );
 }
 
-export default function EndGame({ state, onMode, onFinal, onBack, onSettle, defaultHolderId = null, onAddCash, onRemoveCash }) {
+export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAddCash, onRemoveCash }) {
   const { players, finals, endMode } = state;
   const cash = state.cash ?? [];
   // In net mode, a typed amount waits here until a +/− is chosen.
@@ -279,7 +278,7 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, defa
         })}
       </ul>
 
-      <CashSection players={ordered} cash={cash} netOf={(p) => netOf(state, p)} defaultHolderId={defaultHolderId} onAdd={onAddCash} onRemove={onRemoveCash} />
+      <CashSection players={ordered} cash={cash} netOf={(p) => netOf(state, p)} onAdd={onAddCash} onRemove={onRemoveCash} />
 
       {/* The dark band under the button (pb) keeps the screen's bottom edge the page
           color: iOS Safari tints its toolbar from what touches that edge. */}

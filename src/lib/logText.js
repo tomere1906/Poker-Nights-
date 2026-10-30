@@ -39,7 +39,7 @@ export function describeLog(entry) {
     case 'table_renamed':
       return d.new ? `${who} קרא לשולחן ״${d.new}״` : `${who} הסיר את שם השולחן`;
     case 'cash_added':
-      return `${who} רשם ש${name} שילם ${formatShekel(d.amount)} מזומן (אצל ${d.holder ?? 'שחקן'}) 💵`;
+      return `${who} רשם ש${name} שילם ${formatShekel(d.amount)} במזומן 💵`;
     case 'cash_removed':
       return `${who} מחק מזומן של ${formatShekel(d.amount)} של ${name}`;
     case 'result_set':

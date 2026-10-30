@@ -109,8 +109,8 @@ function ExitPicker({ player, onPick }) {
   );
 }
 
-// After a losing exit: "השאיר מזומן?" (amount + who holds it), or no.
-function LeftCash({ player, players, loss, alreadyPaid, defaultHolderId, onDone }) {
+// After a losing exit: "השאיר מזומן?" (how much, up to the loss), or no.
+function LeftCash({ player, players, loss, alreadyPaid, onDone }) {
   const max = Math.max(0, loss - alreadyPaid);
   return (
     <div className="animate-fade-in mb-5 space-y-2 rounded-2xl bg-slate-800/70 p-3">
@@ -121,7 +121,6 @@ function LeftCash({ player, players, loss, alreadyPaid, defaultHolderId, onDone 
         payerId={player.id}
         maxFor={() => max}
         defaultAmount={max}
-        defaultHolderId={defaultHolderId}
         saveLabel="השאיר מזומן ✓"
         onSave={(cash) => onDone(cash)}
         onCancel={() => onDone(null)}
@@ -135,7 +134,6 @@ export default function PlayerSheet({
   player,
   players = [],
   cashLeft = [],
-  defaultHolderId = null,
   rebuyAmounts,
   canManage = true,
   canSelfAdd = false,
@@ -206,7 +204,7 @@ export default function PlayerSheet({
             <p className="text-sm text-slate-400">יצא מהמשחק עם {formatShekel(player.out.chips)}</p>
             {cashLeft.map((c) => (
               <p key={c.id} className="text-sm text-amber-200">
-                💵 השאיר {formatShekel(c.amount)} מזומן אצל {c.holderName}
+                💵 השאיר {formatShekel(c.amount)} מזומן
               </p>
             ))}
           </div>
@@ -228,8 +226,7 @@ export default function PlayerSheet({
           onPick={(kind, amount) => {
             setPickingExit(false);
             const loss = totalIn(player) - (kind === 'lost_all' ? 0 : kind === 'amount' ? amount : totalIn(player));
-            const others = players.filter((p) => p.id !== player.id);
-            if (loss > 0 && others.length > 0) setPendingExit({ kind, amount, loss });
+            if (loss > 0) setPendingExit({ kind, amount, loss });
             else onMarkOut(kind, amount, null);
           }}
         />
@@ -241,7 +238,6 @@ export default function PlayerSheet({
           players={players}
           loss={pendingExit.loss}
           alreadyPaid={cashLeft.reduce((s, c) => s + c.amount, 0)}
-          defaultHolderId={defaultHolderId}
           onDone={(cash) => {
             setPendingExit(null);
             onMarkOut(pendingExit.kind, pendingExit.amount, cash);

@@ -42,8 +42,8 @@ describe('describeLog: exits and table names', () => {
   });
 
   it('describes cash paid during the night', () => {
-    expect(say('cash_added', { name: 'נדב', holder: 'תומר', amount: 200 }, 'תומר')).toBe('תומר רשם שנדב שילם 200 ₪ מזומן (אצל תומר) 💵');
-    expect(say('cash_removed', { name: 'נדב', holder: 'תומר', amount: 200 }, 'תומר')).toBe('תומר מחק מזומן של 200 ₪ של נדב');
+    expect(say('cash_added', { name: 'נדב', amount: 200 }, 'תומר')).toBe('תומר רשם שנדב שילם 200 ₪ במזומן 💵');
+    expect(say('cash_removed', { name: 'נדב', amount: 200 }, 'תומר')).toBe('תומר מחק מזומן של 200 ₪ של נדב');
   });
 
   it('describes new buy-in amounts', () => {

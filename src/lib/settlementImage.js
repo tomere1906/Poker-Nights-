@@ -97,22 +97,20 @@ function avatar(ctx, player, cx, cy, r) {
   ctx.fillText(initials(player?.name ?? '?'), cx, cy + 1);
 }
 
-// Cash handoffs grouped by who holds the cash: [{ holder, rows: [{ to, amount }], total }].
-export function groupHandoffs(handoffs = []) {
-  const groups = [];
-  for (const h of handoffs) {
-    let g = groups.find((x) => x.holder === h.holder);
-    if (!g) groups.push((g = { holder: h.holder, rows: [], total: 0 }));
-    g.rows.push({ to: h.to, amount: h.amount });
-    g.total += h.amount;
-  }
-  return groups;
+// The cash pot as two sections, like the screen (no holder, ever):
+// "💵 שולם במזומן" (נדב שילם 200 ₪) and "💵 חלוקת המזומן" (300 ₪ לעומר).
+export function cashSections(paid = [], split = [], nameOf = (id) => id) {
+  if (paid.length === 0) return [];
+  return [
+    { title: '💵 שולם במזומן', lines: paid.map((c) => ({ id: c.from, text: `${nameOf(c.from)} שילם ${formatShekel(c.amount)}` })) },
+    { title: '💵 חלוקת המזומן', lines: split.map((l) => ({ id: l.to, text: `${formatShekel(l.amount)} ל${nameOf(l.to)}` })) },
+  ];
 }
 
-const cashGroupHeight = (g) => CASH_HEAD_H + g.rows.length * (CASH_ROW_H + CASH_ROW_GAP) - CASH_ROW_GAP + 12;
+const cashSectionHeight = (section) => CASH_HEAD_H + section.lines.length * (CASH_ROW_H + CASH_ROW_GAP) - CASH_ROW_GAP + 12;
 
 // data: { title, subtitle, transfers: [{ from, to, amount }], nets: [{ id, net }],
-//         cashHandoffs: [{ holder, to, amount }], players: Map(id -> player) }
+//         cashPaid: [{ from, amount }], cashSplit: [{ to, amount }], players: Map(id -> player) }
 export function drawSettlement(data, scale = 3) {
   const measureCanvas = document.createElement('canvas').getContext('2d');
   measureCanvas.font = `700 14px ${FONT}`;
@@ -121,9 +119,9 @@ export function drawSettlement(data, scale = 3) {
   const pillLines = layoutPills(pillTexts, CARD_WIDTH - 2 * PAD, (t) => measureCanvas.measureText(t).width);
 
   const headerH = 96;
-  const groups = groupHandoffs(data.cashHandoffs);
-  // The cash block, then a "העברות" heading above the transfers.
-  const cashH = groups.length ? groups.reduce((s, g) => s + cashGroupHeight(g) + ROW_GAP, 0) + 30 : 0;
+  const sections = cashSections(data.cashPaid, data.cashSplit, nameOf);
+  // The cash sections, then a "💸 העברות" heading above the transfers.
+  const cashH = sections.length ? sections.reduce((sum, sec) => sum + cashSectionHeight(sec) + ROW_GAP, 0) + 34 : 0;
   const listH = data.transfers.length ? data.transfers.length * (ROW_H + ROW_GAP) - ROW_GAP : 64;
   const resultsH = 34 + pillLines.length * (PILL_H + PILL_GAP) - PILL_GAP;
   const footerH = 52;
@@ -154,51 +152,39 @@ export function drawSettlement(data, scale = 3) {
   ctx.font = `400 15px ${FONT}`;
   ctx.fillText(ellipsize(data.subtitle, CARD_WIDTH - 2 * PAD, (t) => ctx.measureText(t).width), right, 72);
 
-  // Cash: "💵 מזומן שאצל תומר · 350 ₪", then "200 ₪ ← עומר" rows.
+  // Cash: each section is a card with its title and one line per player.
   let y = headerH;
-  for (const g of groups) {
-    const h = cashGroupHeight(g);
+  for (const section of sections) {
+    const h = cashSectionHeight(section);
     ctx.fillStyle = COLORS.cash.bg;
     roundRect(ctx, PAD, y, CARD_WIDTH - 2 * PAD, h, 24);
-    avatar(ctx, data.players.get(g.holder), right - 12 - 14, y + 22, 14);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.text;
-    ctx.font = `700 15px ${FONT}`;
-    const head = `💵 מזומן שאצל ${nameOf(g.holder)} · ${formatShekel(g.total)}`;
-    ctx.fillText(ellipsize(head, CARD_WIDTH - 2 * PAD - 60, (s) => ctx.measureText(s).width), right - 12 - 28 - 8, y + 22);
+    ctx.font = `700 16px ${FONT}`;
+    ctx.fillText(section.title, right - 12, y + 22);
     let ry = y + CASH_HEAD_H;
-    for (const row of g.rows) {
+    for (const line of section.lines) {
       ctx.fillStyle = COLORS.cash.row;
       roundRect(ctx, PAD + 10, ry, CARD_WIDTH - 2 * PAD - 20, CASH_ROW_H, 16);
       const mid = ry + CASH_ROW_H / 2;
-      ctx.textAlign = 'right';
-      ctx.fillStyle = COLORS.amount;
-      ctx.font = `800 17px ${FONT}`;
-      const amount = formatShekel(row.amount);
-      ctx.fillText(amount, right - 22, mid + 1);
-      let x = right - 22 - ctx.measureText(amount).width - 10;
-      ctx.fillStyle = COLORS.muted;
-      ctx.font = `400 17px ${FONT}`;
-      ctx.fillText('←', x, mid + 1);
-      x -= ctx.measureText('←').width + 10;
-      avatar(ctx, data.players.get(row.to), x - 13, mid, 13);
+      avatar(ctx, data.players.get(line.id), right - 22 - 13, mid, 13);
       ctx.textAlign = 'right'; // avatar() centers its initials
       ctx.fillStyle = COLORS.text;
       ctx.font = `700 15px ${FONT}`;
-      const label = row.to === g.holder ? `נשאר אצל ${nameOf(g.holder)}` : nameOf(row.to);
-      ctx.fillText(ellipsize(label, x - 26 - 8 - PAD - 20, (s) => ctx.measureText(s).width), x - 26 - 8, mid + 1);
+      const x = right - 22 - 26 - 10;
+      ctx.fillText(ellipsize(line.text, x - PAD - 20, (t) => ctx.measureText(t).width), x, mid + 1);
       ry += CASH_ROW_H + CASH_ROW_GAP;
     }
     y += h + ROW_GAP;
   }
-  if (groups.length) {
+  if (sections.length) {
     ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = COLORS.muted;
-    ctx.font = `500 14px ${FONT}`;
-    ctx.fillText('העברות 💸', right, y + 16);
-    y += 30;
+    ctx.fillStyle = COLORS.text;
+    ctx.font = `700 16px ${FONT}`;
+    ctx.fillText('💸 העברות', right, y + 20);
+    y += 34;
   }
 
   // Transfers
@@ -210,7 +196,7 @@ export function drawSettlement(data, scale = 3) {
     ctx.font = `500 18px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(groups.length ? 'אין העברות – הכל שולם במזומן 💵' : 'כולם יצאו מאוזנים 🤝', CARD_WIDTH / 2, y + 32);
+    ctx.fillText(sections.length ? 'אין העברות – הכל שולם במזומן 💵' : 'כולם יצאו מאוזנים 🤝', CARD_WIDTH / 2, y + 32);
   }
   const half = (CARD_WIDTH - 2 * PAD) / 2;
   for (const t of data.transfers) {
@@ -281,13 +267,13 @@ export function drawSettlement(data, scale = 3) {
 
 // The PNG, after the app font has loaded (otherwise the canvas would use a fallback font).
 // subtitle: the line under the title, as on the screen (table name · date · rounding).
-export async function renderSettlementPng({ subtitle, date, transfers, nets, cashHandoffs = [], players }) {
+export async function renderSettlementPng({ subtitle, date, transfers, nets, cashPaid = [], cashSplit = [], players }) {
   try {
     await Promise.all([document.fonts.load(`800 26px Rubik`), document.fonts.load(`700 16px Rubik`), document.fonts.load(`400 15px Rubik`)]);
   } catch {
     // Offline or blocked: draw with the fallback font.
   }
-  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, cashHandoffs, players });
+  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, cashPaid, cashSplit, players });
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('לא הצלחנו ליצור את התמונה');
   return new File([blob], imageFileName(date), { type: 'image/png' });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ellipsize, groupHandoffs, imageFileName, layoutPills } from './settlementImage.js';
+import { cashSections, ellipsize, imageFileName, layoutPills } from './settlementImage.js';
 
 // A fake text measure: every character is 10px wide.
 const measure = (t) => [...t].length * 10;
@@ -23,18 +23,23 @@ describe('settlement image helpers', () => {
   });
 });
 
-describe('groupHandoffs', () => {
-  it('groups cash handoffs by who holds the cash', () => {
-    expect(
-      groupHandoffs([
-        { holder: 'tomer', to: 'omer', amount: 200 },
-        { holder: 'ben', to: 'ido', amount: 50 },
-        { holder: 'tomer', to: 'ido', amount: 150 },
-      ])
-    ).toEqual([
-      { holder: 'tomer', rows: [{ to: 'omer', amount: 200 }, { to: 'ido', amount: 150 }], total: 350 },
-      { holder: 'ben', rows: [{ to: 'ido', amount: 50 }], total: 50 },
-    ]);
-    expect(groupHandoffs()).toEqual([]);
+describe('cashSections', () => {
+  const names = { nadav: 'נדב', fouad: 'פואד', omer: 'עומר', ido: 'עידו' };
+  const strip = (x) => x.replace(/[\u2066-\u2069]/g, '').replace(/\u00a0/g, ' ');
+
+  it('who paid, then how the pot is split – never a holder', () => {
+    const sections = cashSections(
+      [{ from: 'nadav', amount: 200 }, { from: 'fouad', amount: 150 }],
+      [{ to: 'omer', amount: 300 }, { to: 'ido', amount: 50 }],
+      (id) => names[id]
+    );
+    expect(sections.map((s) => s.title)).toEqual(['💵 שולם במזומן', '💵 חלוקת המזומן']);
+    expect(sections[0].lines.map((l) => strip(l.text))).toEqual(['נדב שילם 200 ₪', 'פואד שילם 150 ₪']);
+    expect(sections[1].lines.map((l) => strip(l.text))).toEqual(['300 ₪ לעומר', '50 ₪ לעידו']);
+    expect(JSON.stringify(sections)).not.toMatch(/אצל/);
+  });
+
+  it('no cash, no sections', () => {
+    expect(cashSections([], [])).toEqual([]);
   });
 });

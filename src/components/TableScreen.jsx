@@ -32,7 +32,6 @@ export default function TableScreen({
   onMarkBack,
   tableName = null,
   cash = [],
-  myPlayerId = null,
   showToast,
 }) {
   // { type: 'add', seat | position } | { type: 'player', id } | { type: 'seat-self', seat }
@@ -188,10 +187,7 @@ export default function TableScreen({
           key={activePlayer.id}
           player={activePlayer}
           players={players}
-          cashLeft={cash
-            .filter((c) => c.from === activePlayer.id)
-            .map((c) => ({ ...c, holderName: players.find((p) => p.id === c.holder)?.name ?? 'שחקן' }))}
-          defaultHolderId={myPlayerId}
+          cashLeft={cash.filter((c) => c.from === activePlayer.id)}
           rebuyAmounts={settings.rebuyAmounts}
           canManage={canManage}
           canSelfAdd={canSelfAdd(activePlayer)}

@@ -234,11 +234,10 @@ function planTransfers(balances, unit) {
   );
 }
 
-// Cash a player already paid ({ from, holder, amount }): valid entries only.
+// Cash a player already paid ({ from, amount }) into the night's cash pot:
+// valid entries only. Nobody "holds" the cash; the pot is split among winners.
 export function cleanCash(cash, ids) {
-  return (cash ?? []).filter(
-    (c) => Number.isInteger(c.amount) && c.amount > 0 && c.from !== c.holder && ids.has(c.from) && ids.has(c.holder)
-  );
+  return (cash ?? []).filter((c) => Number.isInteger(c.amount) && c.amount > 0 && ids.has(c.from));
 }
 
 // Cash is only ever a payment towards a loser's debt: never more than they
@@ -263,84 +262,98 @@ export function cashRoom(net, cash, playerId) {
   return Math.max(0, -(net ?? 0) - paid);
 }
 
-// Who gets a cash bundle as it is (no change needed): someone still owed at
-// least the whole bundle. Best: an exact match (the holder first: keeping it
-// is no handoff at all), then the holder, then whoever is left with no tiny
-// remainder, the smallest remainder first.
-function bundleTarget(owed, holder, amount) {
-  let best = null;
-  let bestScore = null;
-  for (const [id, claim] of owed) {
-    if (claim < amount) continue;
-    const rest = claim - amount;
-    const score = [rest === 0 ? 0 : 1, id === holder ? 0 : 1, rest === 0 || rest >= MIN_TRANSFER ? 0 : 1, rest];
-    if (!bestScore || lessThan(score, bestScore)) {
-      best = id;
-      bestScore = score;
-    }
-  }
-  return best;
+// One line per payer: [{ from, amount }], biggest first.
+export function cashByPayer(cash) {
+  const total = new Map();
+  for (const c of cash) total.set(c.from, (total.get(c.from) ?? 0) + c.amount);
+  return [...total].map(([from, amount]) => ({ from, amount })).sort((a, b) => b.amount - a.amount);
 }
 
-// Lexicographic comparison of two score arrays.
-function lessThan(a, b) {
-  for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] < b[k];
+function combinations(list, k, start = 0, picked = [], out = []) {
+  if (picked.length === k) out.push(picked.slice());
+  else
+    for (let i = start; i <= list.length - (k - picked.length); i++) {
+      picked.push(list[i]);
+      combinations(list, k, i + 1, picked, out);
+      picked.pop();
+    }
+  return out;
+}
+
+const MAX_SPLIT_CANDIDATES = 24;
+
+// a < b, comparing number arrays element by element.
+function lexLess(a, b) {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
   return false;
 }
 
-// Hands every cash bundle to winners. owed: id -> what they're still owed
-// (mutated). Returns [{ holder, to, amount }]; to === holder means "keeps it".
-function handOffCash(cash, owed) {
-  const handoffs = [];
-  const give = (holder, to, amount) => {
-    owed.set(to, owed.get(to) - amount);
-    const same = handoffs.find((h) => h.holder === holder && h.to === to);
-    if (same) same.amount += amount;
-    else handoffs.push({ holder, to, amount });
-  };
-  // Biggest bundles first: they're the hardest to place whole.
-  for (const c of [...cash].sort((a, b) => b.amount - a.amount)) {
-    const owedNow = new Map([...owed].filter(([, v]) => v > 0));
-    const whole = bundleTarget(owedNow, c.holder, c.amount);
-    if (whole !== null) {
-      give(c.holder, whole, c.amount);
-      continue;
-    }
-    // Nobody is owed the whole bundle: split it between winners (the holder's
-    // own share first). Cash never exceeds the losses, so the winners take it all.
-    let left = c.amount;
-    while (left > 0) {
-      const open = [...owed].filter(([, v]) => v > 0);
-      if (open.length === 0) break;
-      const self = open.find(([id]) => id === c.holder);
-      const [to, claim] = self ?? open.reduce((a, b) => (b[1] > a[1] ? b : a));
-      const amount = Math.min(left, claim);
-      give(c.holder, to, amount);
-      left -= amount;
-    }
+// Splits the cash pot among winners in as few lines as possible: the fewest
+// winners whose winnings cover the pot, all paid in full except at most one.
+// Among those, the split that leaves the fewest (and no tiny) transfers.
+// owed: [{ id, net }] after the cash paid (> 0 = still owed). Returns [{ to, amount }].
+function splitCash(pot, owed, unit) {
+  const winners = owed.filter((e) => e.net > 0).sort((a, b) => b.net - a.net);
+  let k = 0;
+  for (let covered = 0; covered < pot && k < winners.length; k++) covered += winners[k].net;
+
+  const candidates = [];
+  for (const group of combinations(winners, k)) {
+    const rest = group.reduce((sum, w) => sum + w.net, 0) - pot; // left to the partly paid winner
+    if (rest < 0) continue;
+    if (rest === 0) candidates.push({ lines: group.map((w) => ({ to: w.id, amount: w.net })), rest });
+    else
+      for (const partial of group) {
+        if (partial.net <= rest) continue;
+        candidates.push({
+          lines: group.map((w) => ({ to: w.id, amount: w === partial ? w.net - rest : w.net })),
+          rest,
+        });
+      }
   }
-  return handoffs.sort((a, b) => b.amount - a.amount);
+  // Most promising first (an exact split, then a remainder that is a real
+  // transfer, not a tiny one); then compare the transfers each leaves.
+  const tiny = (n) => n > 0 && n < MIN_TRANSFER;
+  candidates.sort((x, y) => (y.rest === 0) - (x.rest === 0) || tiny(x.rest) - tiny(y.rest));
+
+  let best = null;
+  for (const candidate of candidates.slice(0, MAX_SPLIT_CANDIDATES)) {
+    const got = new Map(candidate.lines.map((l) => [l.to, l.amount]));
+    const transfers = planTransfers(owed.map((e) => ({ id: e.id, net: e.net - (got.get(e.id) ?? 0) })), unit);
+    const score = [
+      transfers.filter((t) => t.amount < MIN_TRANSFER).length,
+      transfers.length,
+      candidate.lines.filter((l) => tiny(l.amount)).length,
+    ];
+    if (!best || lexLess(score, best.score)) best = { score, lines: candidate.lines, transfers };
+  }
+  return best ?? { lines: [], transfers: planTransfers(owed, unit) };
 }
 
 // entries: [{ id, net }] where net = final chips − total buy-in (may be fractional).
 // unit: "עיגול סכומים" (1 / 5 / 10 / 50). Every net and every transfer is a
 // multiple of it: the plan is searched in units and scaled back.
-// cash: [{ from, holder, amount }] already paid in cash during the night (e.g.
-// a player who lost 250 and left 200 ₪ with someone). Cash never exceeds a
-// payer's loss (capCash), so there is never change to give back. Only what's
-// still owed is settled by transfers; the holder hands the cash on to winners.
-// Returns the rounded nets (the night's results, cash included), the cash that
-// counted (cashPaid), the cash handoffs [{ holder, to, amount }] and the
-// transfers [{ from, to, amount }].
+// cash: [{ from, amount }] paid in cash into the night's pot (e.g. a player who
+// lost 250 and left 200). Cash never exceeds a payer's loss (capCash), so there
+// is never change to give back. The pot is split among winners (cashSplit) and
+// only what's still owed is settled by transfers.
+// Returns the rounded nets (the night's results), the cash paid per player
+// (cashPaid [{ from, amount }]), the pot's split (cashSplit [{ to, amount }])
+// and the transfers [{ from, to, amount }].
 export function settle(entries, { unit = 1, cash = [] } = {}) {
   const nets = roundNets(entries, unit);
   const paid = capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets);
-  if (paid.length === 0) return { nets, cashPaid: [], cashHandoffs: [], transfers: planTransfers(nets, unit) };
+  if (paid.length === 0) return { nets, cashPaid: [], cashSplit: [], transfers: planTransfers(nets, unit) };
 
   // What each player still owes (< 0) or is owed (> 0) after the cash they paid.
   const owed = new Map(nets.map((e) => [e.id, e.net]));
   for (const c of paid) owed.set(c.from, owed.get(c.from) + c.amount);
-  const cashHandoffs = handOffCash(paid, owed);
-  const rest = nets.map((e) => ({ id: e.id, net: owed.get(e.id) }));
-  return { nets, cashPaid: paid, cashHandoffs, transfers: planTransfers(rest, unit) };
+  const pot = paid.reduce((sum, c) => sum + c.amount, 0);
+  const { lines, transfers } = splitCash(pot, nets.map((e) => ({ id: e.id, net: owed.get(e.id) })), unit);
+  return {
+    nets,
+    cashPaid: cashByPayer(paid),
+    cashSplit: lines.sort((x, y) => y.amount - x.amount),
+    transfers,
+  };
 }

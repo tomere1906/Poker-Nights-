@@ -213,7 +213,6 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         settings={view.settings}
         tableName={view.name}
         cash={view.cash}
-        myPlayerId={view.myPlayerId}
         canManage={view.canManage}
         canSelfAdd={canSelfAdd}
         people={view.unseated}

@@ -91,7 +91,7 @@ async function loadTable(tableId) {
       .eq('table_id', tableId)
       .order('created_at', { ascending: false })
       .limit(300),
-    supabase.from('cash_payments').select('id, payer_id, holder_id, amount, created_at').eq('table_id', tableId).order('created_at'),
+    supabase.from('cash_payments').select('id, payer_id, amount, created_at').eq('table_id', tableId).order('created_at'),
   ]);
   return {
     table: must(table),
@@ -189,9 +189,8 @@ export function toView(raw, userId) {
     // A player who joined by invite and isn't seated yet picks their own free seat.
     canSeatSelf: !canManage && !ended && !seated.has(userId) && players.length < MAX_PLAYERS,
     myUserId: userId,
-    myPlayerId: players.find((p) => p.userId === userId)?.id ?? null,
-    // Cash paid during the night (same shape as the local game's state.cash).
-    cash: raw.cash.map((c) => ({ id: c.id, from: c.payer_id, holder: c.holder_id, amount: c.amount })),
+    // Cash paid into the pot (same shape as the local game's state.cash).
+    cash: raw.cash.map((c) => ({ id: c.id, from: c.payer_id, amount: c.amount })),
     log: raw.log,
   };
 }
@@ -201,8 +200,8 @@ function makeActions(view) {
   const tableId = view.id;
   const players = () => [...view.players].sort((a, b) => a.seat - b.seat);
 
-  async function insertCash({ from, holder, amount }) {
-    must(await supabase.from('cash_payments').insert({ table_id: tableId, payer_id: from, holder_id: holder, amount }));
+  async function insertCash({ from, amount }) {
+    must(await supabase.from('cash_payments').insert({ table_id: tableId, payer_id: from, amount }));
   }
 
   async function setSeat(playerId, seat) {
@@ -289,7 +288,7 @@ function makeActions(view) {
     },
 
     // Left mid-game: the seat stays, the exit amount prefills the end-game screen.
-    // cash: { from, holder, amount } left with someone at the table, or null.
+    // cash: { from, amount } paid into the pot when leaving, or null.
     async markOut(player, kind, amount, cash = null) {
       const out = { out_kind: kind, out_chips: exitChips(player, kind, amount) };
       must(await supabase.from('table_players').update(out).eq('id', player.id));

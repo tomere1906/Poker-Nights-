@@ -214,18 +214,18 @@ describe('cash paid during the night', () => {
 
   it('records and removes cash', () => {
     let s = table();
-    s = gameReducer(s, { type: 'addCash', from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 200 });
-    expect(s.cash).toEqual([{ id: expect.any(String), from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 200 }]);
+    s = gameReducer(s, { type: 'addCash', from: id(s, 'נדב'), amount: 200 });
+    expect(s.cash).toEqual([{ id: expect.any(String), from: id(s, 'נדב'), amount: 200 }]);
     s = gameReducer(s, { type: 'removeCash', id: s.cash[0].id });
     expect(s.cash).toEqual([]);
   });
 
-  it('rejects cash to yourself, to strangers, or of no amount', () => {
+  it('rejects cash from strangers or of no amount', () => {
     const s = table();
     for (const bad of [
-      { from: id(s, 'נדב'), holder: id(s, 'נדב'), amount: 50 },
-      { from: id(s, 'נדב'), holder: 'nobody', amount: 50 },
-      { from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 0 },
+      { from: 'nobody', amount: 50 },
+      { from: id(s, 'נדב'), amount: 0 },
+      { from: id(s, 'נדב'), amount: 2.5 },
     ]) {
       expect(gameReducer(s, { type: 'addCash', ...bad })).toBe(s);
     }
@@ -233,9 +233,9 @@ describe('cash paid during the night', () => {
 
   it('removing a player drops their cash entries', () => {
     let s = table();
-    s = gameReducer(s, { type: 'addCash', from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 200 });
-    s = gameReducer(s, { type: 'addCash', from: id(s, 'עומר'), holder: id(s, 'נדב'), amount: 20 });
-    s = gameReducer(s, { type: 'removePlayer', id: id(s, 'תומר') });
+    s = gameReducer(s, { type: 'addCash', from: id(s, 'נדב'), amount: 200 });
+    s = gameReducer(s, { type: 'addCash', from: id(s, 'עומר'), amount: 20 });
+    s = gameReducer(s, { type: 'removePlayer', id: id(s, 'נדב') });
     expect(s.cash.map((c) => c.amount)).toEqual([20]);
     expect(normalizeState({ players: [] }).cash).toEqual([]);
   });
