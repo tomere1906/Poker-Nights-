@@ -147,7 +147,7 @@ export default function Settlement({
               {/* The cash label: its own line under the row, so it never squeezes the names. */}
               {cashNote(t) && (
                 <div className="mt-2 flex justify-center">
-                  <span className="rounded-full bg-emerald-400 px-3 py-1 text-sm font-extrabold text-slate-900 shadow-md shadow-emerald-400/20">
+                  <span className="rounded-full bg-emerald-400/15 px-3 text-lg font-extrabold leading-snug text-emerald-300">
                     {cashNote(t)}
                   </span>
                 </div>

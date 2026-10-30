@@ -25,7 +25,7 @@ const COLORS = {
   text: '#f1f5f9',
   muted: '#94a3b8',
   amount: '#fcd34d',
-  note: { bg: '#34d399', fg: '#0f172a' },
+  note: { bg: 'rgba(52, 211, 153, 0.15)', fg: '#6ee7b7' },
   win: { bg: 'rgba(52, 211, 153, 0.15)', fg: '#6ee7b7' },
   loss: { bg: 'rgba(251, 113, 133, 0.15)', fg: '#fda4af' },
   even: { bg: 'rgba(255, 255, 255, 0.1)', fg: '#cbd5e1' },
@@ -241,12 +241,13 @@ export function drawSettlement(data, scale = 3) {
     ctx.font = `400 20px ${FONT}`;
     ctx.fillText('←', CARD_WIDTH / 2, top + 19);
     if (note) {
-      ctx.font = `800 14px ${FONT}`;
+      // The same size as the amount above it.
+      ctx.font = `800 18px ${FONT}`;
       const w = ctx.measureText(note).width + 24;
       ctx.fillStyle = COLORS.note.bg;
-      roundRect(ctx, CARD_WIDTH / 2 - w / 2, top + 31, w, 26, 13);
+      roundRect(ctx, CARD_WIDTH / 2 - w / 2, top + 32, w, 26, 13);
       ctx.fillStyle = COLORS.note.fg;
-      ctx.fillText(note, CARD_WIDTH / 2, top + 44.5);
+      ctx.fillText(note, CARD_WIDTH / 2, top + 45);
     }
     y += h + ROW_GAP;
   }
