@@ -110,7 +110,8 @@ function ExitPicker({ player, onPick }) {
 }
 
 // After a losing exit: "השאיר מזומן?" (amount + who holds it), or no.
-function LeftCash({ player, players, loss, defaultHolderId, onDone }) {
+function LeftCash({ player, players, loss, alreadyPaid, defaultHolderId, onDone }) {
+  const max = Math.max(0, loss - alreadyPaid);
   return (
     <div className="animate-fade-in mb-5 space-y-2 rounded-2xl bg-slate-800/70 p-3">
       <p className="font-bold">השאיר מזומן? 💵</p>
@@ -118,7 +119,8 @@ function LeftCash({ player, players, loss, defaultHolderId, onDone }) {
       <CashForm
         players={players}
         payerId={player.id}
-        defaultAmount={loss}
+        maxFor={() => max}
+        defaultAmount={max}
         defaultHolderId={defaultHolderId}
         saveLabel="השאיר מזומן ✓"
         onSave={(cash) => onDone(cash)}
@@ -238,6 +240,7 @@ export default function PlayerSheet({
           player={player}
           players={players}
           loss={pendingExit.loss}
+          alreadyPaid={cashLeft.reduce((s, c) => s + c.amount, 0)}
           defaultHolderId={defaultHolderId}
           onDone={(cash) => {
             setPendingExit(null);

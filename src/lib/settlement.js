@@ -241,6 +241,28 @@ export function cleanCash(cash, ids) {
   );
 }
 
+// Cash is only ever a payment towards a loser's debt: never more than they
+// lost. Keeps each payer's entries (in order) within their loss and drops what
+// doesn't fit. nets: [{ id, net }] (rounded).
+export function capCash(cash, nets) {
+  const room = new Map(nets.map((e) => [e.id, Math.max(0, -e.net)]));
+  const capped = [];
+  for (const c of cash) {
+    const amount = Math.min(c.amount, room.get(c.from) ?? 0);
+    if (amount <= 0) continue;
+    capped.push({ ...c, amount });
+    room.set(c.from, room.get(c.from) - amount);
+  }
+  return capped;
+}
+
+// How much more cash this player may still pay: their loss minus the cash
+// already recorded for them (0 if they didn't lose). net: their result.
+export function cashRoom(net, cash, playerId) {
+  const paid = cash.filter((c) => c.from === playerId).reduce((s, c) => s + c.amount, 0);
+  return Math.max(0, -(net ?? 0) - paid);
+}
+
 // Who gets a cash bundle as it is (no change needed): someone still owed at
 // least the whole bundle. Best: an exact match (the holder first: keeping it
 // is no handoff at all), then the holder, then whoever is left with no tiny
@@ -284,7 +306,8 @@ function handOffCash(cash, owed) {
       give(c.holder, whole, c.amount);
       continue;
     }
-    // Nobody is owed the whole bundle: split it (the holder keeps their share first).
+    // Nobody is owed the whole bundle: split it between winners (the holder's
+    // own share first). Cash never exceeds the losses, so the winners take it all.
     let left = c.amount;
     while (left > 0) {
       const open = [...owed].filter(([, v]) => v > 0);
@@ -303,19 +326,21 @@ function handOffCash(cash, owed) {
 // unit: "עיגול סכומים" (1 / 5 / 10 / 50). Every net and every transfer is a
 // multiple of it: the plan is searched in units and scaled back.
 // cash: [{ from, holder, amount }] already paid in cash during the night (e.g.
-// a player who lost and left 200 ₪ with someone). Only what's still owed is
-// settled by transfers; the holder hands the cash on to winners (cashHandoffs).
-// Returns the rounded nets (the night's results, cash included), the cash
-// handoffs [{ holder, to, amount }] and the transfers [{ from, to, amount }].
+// a player who lost 250 and left 200 ₪ with someone). Cash never exceeds a
+// payer's loss (capCash), so there is never change to give back. Only what's
+// still owed is settled by transfers; the holder hands the cash on to winners.
+// Returns the rounded nets (the night's results, cash included), the cash that
+// counted (cashPaid), the cash handoffs [{ holder, to, amount }] and the
+// transfers [{ from, to, amount }].
 export function settle(entries, { unit = 1, cash = [] } = {}) {
   const nets = roundNets(entries, unit);
-  const paid = cleanCash(cash, new Set(nets.map((e) => e.id)));
-  if (paid.length === 0) return { nets, cashHandoffs: [], transfers: planTransfers(nets, unit) };
+  const paid = capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets);
+  if (paid.length === 0) return { nets, cashPaid: [], cashHandoffs: [], transfers: planTransfers(nets, unit) };
 
   // What each player still owes (< 0) or is owed (> 0) after the cash they paid.
   const owed = new Map(nets.map((e) => [e.id, e.net]));
   for (const c of paid) owed.set(c.from, owed.get(c.from) + c.amount);
   const cashHandoffs = handOffCash(paid, owed);
   const rest = nets.map((e) => ({ id: e.id, net: owed.get(e.id) }));
-  return { nets, cashHandoffs, transfers: planTransfers(rest, unit) };
+  return { nets, cashPaid: paid, cashHandoffs, transfers: planTransfers(rest, unit) };
 }

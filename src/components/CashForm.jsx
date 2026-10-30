@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatShekel } from '../lib/format.js';
 import AmountInput from './AmountInput.jsx';
 import Avatar from './Avatar.jsx';
 
@@ -27,22 +28,47 @@ function PlayerChoice({ players, value, onChange, label }) {
   );
 }
 
-// Cash paid during the night: who paid (fixed when payerId is given), how much,
-// and who at the table holds it. onSave({ from, holder, amount }).
-export default function CashForm({ players, payerId = null, defaultAmount = 0, defaultHolderId = null, saveLabel = 'רשום', onSave, onCancel, cancelLabel = 'ביטול' }) {
+// Cash paid towards a loss: who paid (fixed when payerId is given, else one of
+// payers), how much, and who at the table holds it. maxFor(id): the most that
+// player may still pay (their loss minus cash already recorded); cash is never
+// more than the loss. onSave({ from, holder, amount }).
+export default function CashForm({
+  players,
+  payers = players,
+  payerId = null,
+  maxFor,
+  defaultAmount = 0,
+  defaultHolderId = null,
+  saveLabel = 'רשום',
+  onSave,
+  onCancel,
+  cancelLabel = 'ביטול',
+}) {
   const [from, setFrom] = useState(payerId);
   const [amount, setAmount] = useState(defaultAmount);
   const holders = players.filter((p) => p.id !== from);
   const [holder, setHolder] = useState(defaultHolderId !== payerId ? defaultHolderId : null);
   const validHolder = holders.some((p) => p.id === holder) ? holder : null;
-  const ready = from && validHolder && amount > 0;
+  const max = from ? maxFor(from) : null;
+  const payerName = players.find((p) => p.id === from)?.name ?? 'השחקן';
+  const tooMuch = max !== null && amount > max;
+  const ready = from && validHolder && amount > 0 && !tooMuch;
 
   return (
     <div className="space-y-3">
-      {!payerId && <PlayerChoice players={players} value={from} onChange={setFrom} label="מי שילם?" />}
+      {!payerId && <PlayerChoice players={payers} value={from} onChange={setFrom} label="מי שילם? (רק מי שהפסיד)" />}
       <div>
-        <p className="mb-1.5 text-xs text-slate-400">כמה מזומן?</p>
+        <p className="mb-1.5 text-xs text-slate-400">
+          כמה מזומן?{max !== null && max > 0 && ` (עד ${formatShekel(max)})`}
+        </p>
         <AmountInput value={amount} onChange={setAmount} placeholder="סכום" />
+        {tooMuch && (
+          <p className="mt-2 rounded-xl bg-rose-400/15 px-3 py-2 text-sm font-bold text-rose-200" role="alert">
+            {max === 0
+              ? `${payerName} כבר שילם את כל ההפסד שלו`
+              : `אי אפשר לשלם במזומן יותר מההפסד: ${payerName} יכול לשלם עד ${formatShekel(max)}`}
+          </p>
+        )}
       </div>
       {from && <PlayerChoice players={holders} value={validHolder} onChange={setHolder} label="אצל מי המזומן?" />}
       <div className="flex gap-2">

@@ -3,12 +3,17 @@ import { EXITS, netOf, potTotal, totalIn } from '../lib/game.js';
 import { formatShekel, parseAmount } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
 import CashForm from './CashForm.jsx';
+import { cashRoom } from '../lib/settlement.js';
 
 // "מזומן ששולם": cash already paid (when leaving, or at the end). Only the rest
 // is settled by transfers. Without onAdd/onRemove it's read-only.
-function CashSection({ players, cash, defaultHolderId, onAdd, onRemove }) {
+// netOf(player): their profit/loss, or null before it's entered. Only players
+// with a loss can pay cash, and never more than that loss.
+function CashSection({ players, cash, netOf, defaultHolderId, onAdd, onRemove }) {
   const [adding, setAdding] = useState(false);
   const nameOf = (id) => players.find((p) => p.id === id)?.name ?? 'שחקן';
+  const netById = new Map(players.map((p) => [p.id, netOf(p)]));
+  const losers = players.filter((p) => netById.get(p.id) < 0);
   if (cash.length === 0 && !onAdd) return null;
   return (
     <section className="mt-4 rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5">
@@ -39,6 +44,8 @@ function CashSection({ players, cash, defaultHolderId, onAdd, onRemove }) {
         (adding ? (
           <CashForm
             players={players}
+            payers={losers}
+            maxFor={(id) => cashRoom(netById.get(id), cash, id)}
             defaultHolderId={defaultHolderId}
             onSave={(entry) => {
               setAdding(false);
@@ -49,10 +56,11 @@ function CashSection({ players, cash, defaultHolderId, onAdd, onRemove }) {
         ) : (
           <button
             type="button"
+            disabled={losers.length === 0}
             onClick={() => setAdding(true)}
-            className="w-full rounded-2xl border-2 border-dashed border-white/15 py-2.5 text-sm font-bold text-slate-300 active:scale-[0.98]"
+            className="w-full rounded-2xl border-2 border-dashed border-white/15 py-2.5 text-sm font-bold text-slate-300 active:scale-[0.98] disabled:text-slate-500"
           >
-            + רשום מזומן ששולם
+            {losers.length === 0 ? 'קודם הזינו תוצאות – מזומן רק ממי שהפסיד' : '+ רשום מזומן ששולם'}
           </button>
         ))}
     </section>
@@ -118,6 +126,13 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, defa
   const diff = nets.reduce((sum, n) => sum + (n ?? 0), 0);
   const gains = nets.reduce((sum, n) => sum + Math.max(n ?? 0, 0), 0);
   const losses = nets.reduce((sum, n) => sum + Math.min(n ?? 0, 0), 0);
+
+  // Cash above a loss (e.g. the result was changed after the cash was recorded).
+  const overpaid = players.filter((p) => {
+    const paid = cash.filter((c) => c.from === p.id).reduce((s, c) => s + c.amount, 0);
+    const net = netOf(state, p);
+    return paid > 0 && net !== null && paid > Math.max(0, -net);
+  });
 
   const signOf = (id) => (finals[id] > 0 ? 1 : finals[id] < 0 ? -1 : signs[id]);
 
@@ -264,7 +279,7 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, defa
         })}
       </ul>
 
-      <CashSection players={ordered} cash={cash} defaultHolderId={defaultHolderId} onAdd={onAddCash} onRemove={onRemoveCash} />
+      <CashSection players={ordered} cash={cash} netOf={(p) => netOf(state, p)} defaultHolderId={defaultHolderId} onAdd={onAddCash} onRemove={onRemoveCash} />
 
       {/* The dark band under the button (pb) keeps the screen's bottom edge the page
           color: iOS Safari tints its toolbar from what touches that edge. */}
@@ -299,9 +314,16 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, defa
           </div>
         )}
 
+        {overpaid.length > 0 && (
+          <div className="rounded-2xl bg-rose-400/15 px-4 py-3 text-sm font-bold text-rose-200 ring-1 ring-rose-400/30" role="alert">
+            💵 המזומן של {overpaid.map((p) => p.name).join(', ')} גדול מההפסד. מזומן הוא רק תשלום על חשבון ההפסד – תקנו את
+            התוצאה או מחקו את המזומן.
+          </div>
+        )}
+
         <button
           type="button"
-          disabled={missing > 0}
+          disabled={missing > 0 || overpaid.length > 0}
           onClick={onSettle}
           className="w-full rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
         >

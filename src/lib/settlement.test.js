@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TRANSFER, ROUNDING_UNITS, roundNets, roundTo, settle } from './settlement.js';
+import { MIN_TRANSFER, ROUNDING_UNITS, cashRoom, roundNets, roundTo, settle } from './settlement.js';
 
 const entries = (obj) => Object.entries(obj).map(([id, net]) => ({ id, net }));
 
@@ -172,9 +172,9 @@ describe('cash paid during the night', () => {
   ];
 
   // Everyone ends at 0: own net + cash paid + transfers sent = cash received + transfers received.
+  const sum = (list, key, who) => list.filter((x) => x[key] === who).reduce((s, x) => s + x.amount, 0);
   function expectSettled({ nets, cashHandoffs, transfers }, paid) {
     for (const { id, net } of nets) {
-      const sum = (list, key, who) => list.filter((x) => x[key] === who).reduce((s, x) => s + x.amount, 0);
       expect(net + sum(paid, 'from', id) + sum(transfers, 'from', id)).toBe(sum(cashHandoffs, 'to', id) + sum(transfers, 'to', id));
     }
     // A holder hands on exactly the cash they hold, and only to people who won.
@@ -183,8 +183,10 @@ describe('cash paid during the night', () => {
         paid.filter((c) => c.holder === holder).reduce((s, c) => s + c.amount, 0)
       );
     }
+    // Cash only goes to winners, and no payer paid more than they lost.
     const won = new Map(nets.map((e) => [e.id, e.net]));
-    for (const h of cashHandoffs) expect(won.get(h.to) + paid.filter((c) => c.from === h.to).reduce((s, c) => s + c.amount, 0)).toBeGreaterThan(0);
+    for (const h of cashHandoffs) expect(won.get(h.to)).toBeGreaterThan(0);
+    for (const [id, net] of won) expect(sum(paid, 'from', id)).toBeLessThanOrEqual(Math.max(0, -net));
   }
 
   it('settles only what is still owed (unit 1)', () => {
@@ -232,10 +234,38 @@ describe('cash paid during the night', () => {
     expect(result.cashHandoffs.find((x) => x.to === 'h').amount).toBe(80);
   });
 
-  it('pays back a player who left more cash than they lost', () => {
-    const paid = [{ from: 'a', holder: 'h', amount: 200 }];
-    const result = settle(entries({ a: -150, b: 150, h: 0 }), { cash: paid });
+  it('the real case: Nadav lost 250 and gave 200 cash', () => {
+    const paid = [{ from: 'nadav', holder: 'tomer', amount: 200 }];
+    const result = settle(entries({ nadav: -250, omer: 250, tomer: 0 }), { cash: paid });
     expectSettled(result, paid);
+    expect(result.cashHandoffs).toEqual([{ holder: 'tomer', to: 'omer', amount: 200 }]);
+    expect(result.transfers).toEqual([{ from: 'nadav', to: 'omer', amount: 50 }]);
+  });
+
+  it('never gives change: cash above the loss is capped at the loss', () => {
+    const result = settle(entries({ a: -150, b: 150, h: 0 }), { cash: [{ from: 'a', holder: 'h', amount: 200 }] });
+    expect(result.cashPaid).toEqual([{ from: 'a', holder: 'h', amount: 150 }]);
+    expect(result.cashHandoffs).toEqual([{ holder: 'h', to: 'b', amount: 150 }]);
+    expect(result.transfers).toEqual([]);
+    // A winner's cash doesn't count at all.
+    expect(settle(entries({ a: 50, b: -50 }), { cash: [{ from: 'a', holder: 'b', amount: 20 }] }).cashPaid).toEqual([]);
+    // Several entries: only what fits in the loss, in order.
+    const two = settle(entries({ a: -100, b: 100, h: 0 }), {
+      cash: [
+        { from: 'a', holder: 'h', amount: 70 },
+        { from: 'a', holder: 'h', amount: 50 },
+      ],
+    });
+    expect(two.cashPaid.map((c) => c.amount)).toEqual([70, 30]);
+  });
+
+  it('cashRoom: how much more cash a player may pay', () => {
+    const cash = [{ from: 'a', holder: 'h', amount: 200 }];
+    expect(cashRoom(-250, cash, 'a')).toBe(50);
+    expect(cashRoom(-250, [], 'a')).toBe(250);
+    expect(cashRoom(-150, cash, 'a')).toBe(0);
+    expect(cashRoom(40, [], 'a')).toBe(0);
+    expect(cashRoom(null, [], 'a')).toBe(0);
   });
 
   it('ignores invalid cash entries', () => {
@@ -265,7 +295,7 @@ describe('cash paid during the night', () => {
         .map((e) => ({ from: e.id, holder: ids.find((id) => id !== e.id), amount: 1 + rand(-e.net) }));
       const unit = ROUNDING_UNITS[rand(4)];
       const result = settle(nets, { unit, cash: paid });
-      expectSettled(result, paid);
+      expectSettled(result, result.cashPaid);
       expect(result.transfers.every((t) => Number.isInteger(t.amount) && t.amount > 0)).toBe(true);
     }
   });
