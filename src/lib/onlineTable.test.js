@@ -63,7 +63,8 @@ describe('toView', () => {
 
   it('maps settings and status', () => {
     const v = toView(raw(), M);
-    expect(v.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100], rounding: 10 });
+    expect(v.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100], rounding: 10, sheep: true });
+    expect(toView(raw({ table: { ...raw().table, sheep: false } }), M).settings.sheep).toBe(false);
     expect(toView(raw({ table: { ...raw().table, rounding: 50 } }), M).settings.rounding).toBe(50);
     expect(v.started).toBe(false);
     expect(toView(raw({ table: { ...raw().table, status: 'playing' } }), M).started).toBe(true);

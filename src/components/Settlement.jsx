@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { cashNote, settle } from '../lib/settlement.js';
+import { cashNote, settle, sheepIds } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
-import RoundingPicker, { roundingLabel } from './RoundingPicker.jsx';
+import RoundingPicker from './RoundingPicker.jsx';
 
 // "משחק חדש" for the local table: wipes the game after a second tap.
 export function NewGameButton({ onNewGame }) {
@@ -34,6 +34,7 @@ export default function Settlement({
   entries,
   rounding = 1,
   cash = [],
+  sheep = true,
   onRoundingChange = null,
   tableName = null,
   date = null,
@@ -49,25 +50,28 @@ export default function Settlement({
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
   const { nets, transfers } = useMemo(() => settle(entries, { unit: rounding, cash }), [entries, rounding, cash]);
-  const details = [tableName, formatDate(when), roundingLabel(rounding)].filter(Boolean).join(' · ');
+  // The header: table name and date only.
+  const details = [tableName, formatDate(when)].filter(Boolean).join(' · ');
+  // "🐑 כבש הערב": the biggest loser(s), when the table has it on.
+  const sheepOf = useMemo(() => (sheep ? sheepIds(nets) : new Set()), [sheep, nets]);
 
   // Prepare the image up front: iPhone Safari opens the share sheet only right
   // after a tap, so the tap itself must not wait for drawing.
   useEffect(() => {
     let active = true;
     setFile(null);
-    renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId })
+    renderSettlementPng({ subtitle: details, date: when, transfers, nets, sheep: sheepOf, players: byId })
       .then((f) => active && setFile(f))
       .catch(() => active && setFile(null));
     return () => {
       active = false;
     };
-  }, [details, when, transfers, nets, byId]);
+  }, [details, when, transfers, nets, sheepOf, byId]);
 
   async function share() {
     setShareState('working');
     try {
-      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId }));
+      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, sheep: sheepOf, players: byId }));
       const result = await shareOrDownload(image);
       setShareState(result === 'downloaded' ? 'downloaded' : null);
       if (result === 'downloaded') setTimeout(() => setShareState(null), 2500);
@@ -112,26 +116,31 @@ export default function Settlement({
           {transfers.map((t, i) => (
             <li
               key={i}
-              className="animate-pop-in flex items-center gap-2 rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5"
+              className="animate-pop-in rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5"
               style={{ animationDelay: `${i * 60}ms` }}
             >
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <Avatar player={byId.get(t.from)} size="h-10 w-10 text-sm" />
-                <PlayerName name={nameOf(t.from)} className="font-bold" />
+              <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <Avatar player={byId.get(t.from)} size="h-10 w-10 text-sm" />
+                  <PlayerName name={nameOf(t.from)} className="font-bold" />
+                </div>
+                <div className="flex shrink-0 flex-col items-center px-1">
+                  <span className="text-lg font-extrabold text-amber-300">{formatShekel(t.amount)}</span>
+                  <span className="-mt-1 text-xl leading-none text-slate-400">←</span>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-row-reverse items-center gap-2">
+                  <Avatar player={byId.get(t.to)} size="h-10 w-10 text-sm" />
+                  <PlayerName name={nameOf(t.to)} className="text-end font-bold" />
+                </div>
               </div>
-              <div className="flex shrink-0 flex-col items-center px-1">
-                <span className="text-lg font-extrabold text-amber-300">{formatShekel(t.amount)}</span>
-                <span className="-mt-1 text-xl leading-none text-slate-400">←</span>
-                {cashNote(t) && (
-                  <span className="mt-0.5 whitespace-nowrap rounded-full bg-emerald-300/15 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+              {/* The cash label: its own line under the row, so it never squeezes the names. */}
+              {cashNote(t) && (
+                <div className="mt-2 flex justify-center">
+                  <span className="rounded-full bg-emerald-400 px-3 py-1 text-sm font-extrabold text-slate-900 shadow-md shadow-emerald-400/20">
                     {cashNote(t)}
                   </span>
-                )}
-              </div>
-              <div className="flex min-w-0 flex-1 flex-row-reverse items-center gap-2">
-                <Avatar player={byId.get(t.to)} size="h-10 w-10 text-sm" />
-                <PlayerName name={nameOf(t.to)} className="text-end font-bold" />
-              </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -149,6 +158,11 @@ export default function Settlement({
               }`}
             >
               <PlayerName name={nameOf(e.id)} />
+              {sheepOf.has(e.id) && (
+                <span className="shrink-0 text-lg leading-none" role="img" aria-label="כבש הערב">
+                  🐑
+                </span>
+              )}
               <span className="shrink-0">{formatShekel(e.net, { signed: true })}</span>
             </span>
           ))}

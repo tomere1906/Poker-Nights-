@@ -231,6 +231,7 @@ export default function App() {
           players={players}
           entries={localNets}
           rounding={settings.rounding}
+          sheep={settings.sheep}
           cash={state.cash}
           onRoundingChange={(unit) => dispatch({ type: 'setRounding', unit })}
           onBack={() => setView('end')}
@@ -248,6 +249,7 @@ export default function App() {
         <LocalSettingsSheet
           settings={settings}
           onRounding={(unit) => dispatch({ type: 'setRounding', unit })}
+          onSheep={(on) => dispatch({ type: 'setSheep', on })}
           onAmounts={(amounts) => {
             dispatch({ type: 'setAmounts', ...amounts });
             showToast('הסכומים עודכנו');

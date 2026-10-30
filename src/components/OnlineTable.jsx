@@ -158,6 +158,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         players={view.players}
         entries={entries}
         rounding={view.settings.rounding}
+        sheep={view.settings.sheep}
         cash={view.cash}
         tableName={view.name}
         date={view.endedAt}
@@ -185,6 +186,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         players={view.players}
         entries={entries}
         rounding={view.settings.rounding}
+        sheep={view.settings.sheep}
         cash={view.cash}
         onRoundingChange={view.isManager ? (unit) => actions.setRounding(unit).catch(fail) : null}
         tableName={view.name}

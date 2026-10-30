@@ -269,6 +269,13 @@ export function cashRoom(net, cash, playerId) {
   return Math.max(0, -(net ?? 0) - paid);
 }
 
+// "🐑 כבש הערב": the biggest loser(s) of the night (all of them on a tie), from
+// the rounded nets. Nobody when nobody lost.
+export function sheepIds(nets) {
+  const worst = Math.min(0, ...nets.map((e) => e.net));
+  return worst < 0 ? new Set(nets.filter((e) => e.net === worst).map((e) => e.id)) : new Set();
+}
+
 // The small note under a row's amount: "💵 מזומן" when it's all cash,
 // "200 מזומן · 70 העברה" when it's both, null for a plain transfer.
 export function cashNote(row) {

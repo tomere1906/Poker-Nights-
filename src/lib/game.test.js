@@ -16,7 +16,7 @@ describe('table settings', () => {
     s = gameReducer(s, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [60, 30, 100] } });
     expect(s.tableOpen).toBe(true);
     expect(s.players).toEqual([]);
-    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100], rounding: 10 });
+    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100], rounding: 10, sheep: true });
   });
 
   it('cleans settings: 2-4 distinct positive buttons, else defaults', () => {
@@ -24,6 +24,7 @@ describe('table settings', () => {
       initialBuyIn: 40,
       rebuyAmounts: [50, 100],
       rounding: 10,
+      sheep: true,
     });
     // Rounding: 1 / 5 / 10 / 50 ₪, default 10 (also for saves from before the setting).
     expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [50, 100], rounding: 50 }).rounding).toBe(50);
@@ -33,10 +34,18 @@ describe('table settings', () => {
     expect(cleanSettings(undefined)).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('"כבש הערב" is on by default and can be turned off', () => {
+    expect(DEFAULT_SETTINGS.sheep).toBe(true);
+    expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [50, 100] }).sheep).toBe(true);
+    expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [50, 100], sheep: false }).sheep).toBe(false);
+    const s = gameReducer(initialState, { type: 'openTable', settings: DEFAULT_SETTINGS });
+    expect(gameReducer(s, { type: 'setSheep', on: false }).settings.sheep).toBe(false);
+  });
+
   it('changes the rounding of the open table only', () => {
     let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [30, 60] } });
     s = gameReducer(seat(s, 'א'), { type: 'setRounding', unit: 50 });
-    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60], rounding: 50 });
+    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60], rounding: 50, sheep: true });
     expect(s.players).toHaveLength(1);
     expect(gameReducer(s, { type: 'setRounding', unit: 3 }).settings.rounding).toBe(10);
   });
@@ -46,7 +55,7 @@ describe('table settings', () => {
     s = gameReducer(s, { type: 'startGame' });
     s = add(s, 'א', 0, 50);
     s = gameReducer(s, { type: 'setAmounts', initialBuyIn: 200, rebuyAmounts: [500, 200, 1000] });
-    expect(s.settings).toEqual({ initialBuyIn: 200, rebuyAmounts: [200, 500, 1000], rounding: 5 });
+    expect(s.settings).toEqual({ initialBuyIn: 200, rebuyAmounts: [200, 500, 1000], rounding: 5, sheep: true });
     expect(totalIn(s.players[0])).toBe(50);
     // Invalid amounts fall back to the defaults instead of breaking the table.
     expect(gameReducer(s, { type: 'setAmounts', initialBuyIn: 0, rebuyAmounts: [] }).settings.rebuyAmounts).toEqual(DEFAULT_SETTINGS.rebuyAmounts);

@@ -11,7 +11,7 @@ import { cashNote } from './settlement.js';
 export const CARD_WIDTH = 390; // CSS px, like a phone screen
 const PAD = 16;
 const ROW_H = 64;
-const ROW_NOTE_H = 80; // a row with a "💵 מזומן" note under the amount
+const ROW_NOTE_H = 92; // a row with a "💵 מזומן" label under the amount
 const ROW_GAP = 8;
 const PILL_H = 30;
 const PILL_TWO_LINES_H = 46;
@@ -25,7 +25,7 @@ const COLORS = {
   text: '#f1f5f9',
   muted: '#94a3b8',
   amount: '#fcd34d',
-  note: { bg: 'rgba(110, 231, 183, 0.15)', fg: '#a7f3d0' },
+  note: { bg: '#34d399', fg: '#0f172a' },
   win: { bg: 'rgba(52, 211, 153, 0.15)', fg: '#6ee7b7' },
   loss: { bg: 'rgba(251, 113, 133, 0.15)', fg: '#fda4af' },
   even: { bg: 'rgba(255, 255, 255, 0.1)', fg: '#cbd5e1' },
@@ -35,6 +35,7 @@ const NAME_FONT = `700 16px ${FONT}`;
 const NAME_REST_FONT = `600 13px ${FONT}`;
 const PILL_FONT = `700 14px ${FONT}`;
 const PILL_REST_FONT = `600 12px ${FONT}`;
+const SHEEP_FONT = `400 17px ${FONT}`;
 
 const signed = (n) => formatShekel(n, { signed: true });
 
@@ -134,16 +135,21 @@ function nameWidth(ctx, name, fonts) {
 
 const rowHeight = (t) => (cashNote(t) ? ROW_NOTE_H : ROW_H);
 
-// data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }], players: Map(id -> player) }
+// data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }],
+//         sheep: Set of ids with "🐑 כבש הערב", players: Map(id -> player) }
 export function drawSettlement(data, scale = 3) {
   const measure = document.createElement('canvas').getContext('2d');
   const nameOf = (id) => data.players.get(id)?.name ?? 'שחקן';
   const sorted = [...data.nets].sort((a, b) => b.net - a.net);
+  const sheep = data.sheep ?? new Set();
   const pillMax = CARD_WIDTH - 2 * PAD;
+  measure.font = SHEEP_FONT;
+  const sheepW = measure.measureText('🐑').width + 6;
   const pillWidth = (e) => {
     measure.font = PILL_FONT;
     const amount = measure.measureText(signed(e.net)).width;
-    return Math.min(pillMax, PILL_PAD + nameWidth(measure, nameOf(e.id), [PILL_FONT, PILL_REST_FONT]) + 6 + amount);
+    const extra = sheep.has(e.id) ? sheepW : 0;
+    return Math.min(pillMax, PILL_PAD + nameWidth(measure, nameOf(e.id), [PILL_FONT, PILL_REST_FONT]) + 6 + amount + extra);
   };
   const pillLines = layoutPills(sorted, pillMax, pillWidth);
   const pillLineH = (line) => (line.some((p) => splitName(nameOf(p.item.id)).rest) ? PILL_TWO_LINES_H : PILL_H);
@@ -210,8 +216,8 @@ export function drawSettlement(data, scale = 3) {
     drawName(ctx, nameOf(t.from), right - 12 - 2 * r - 8, mid, nameMax, 'right');
     drawName(ctx, nameOf(t.to), PAD + 12 + 2 * r + 8, mid, nameMax, 'left');
 
-    // Middle: amount, arrow, and the note pill under them.
-    const top = note ? mid - 18 : mid - 8;
+    // Middle: amount, arrow, and the cash label under them.
+    const top = note ? mid - 22 : mid - 8;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.amount;
@@ -221,12 +227,12 @@ export function drawSettlement(data, scale = 3) {
     ctx.font = `400 20px ${FONT}`;
     ctx.fillText('←', CARD_WIDTH / 2, top + 19);
     if (note) {
-      ctx.font = `700 11px ${FONT}`;
-      const w = ctx.measureText(note).width + 14;
+      ctx.font = `800 14px ${FONT}`;
+      const w = ctx.measureText(note).width + 24;
       ctx.fillStyle = COLORS.note.bg;
-      roundRect(ctx, CARD_WIDTH / 2 - w / 2, top + 30, w, 18, 9);
+      roundRect(ctx, CARD_WIDTH / 2 - w / 2, top + 31, w, 26, 13);
       ctx.fillStyle = COLORS.note.fg;
-      ctx.fillText(note, CARD_WIDTH / 2, top + 39.5);
+      ctx.fillText(note, CARD_WIDTH / 2, top + 44.5);
     }
     y += h + ROW_GAP;
   }
@@ -254,7 +260,13 @@ export function drawSettlement(data, scale = 3) {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(amount, x - width + PILL_PAD / 2, y + lineH / 2 + 1);
-      drawName(ctx, nameOf(e.id), x - PILL_PAD / 2, y + lineH / 2 + 1, width - PILL_PAD - amountW - 6, 'right', [PILL_FONT, PILL_REST_FONT]);
+      const extra = sheep.has(e.id) ? sheepW : 0;
+      if (extra) {
+        ctx.font = SHEEP_FONT;
+        ctx.fillText('🐑', x - width + PILL_PAD / 2 + amountW + 4, y + lineH / 2 + 1);
+        ctx.fillStyle = tone.fg;
+      }
+      drawName(ctx, nameOf(e.id), x - PILL_PAD / 2, y + lineH / 2 + 1, width - PILL_PAD - amountW - 6 - extra, 'right', [PILL_FONT, PILL_REST_FONT]);
       x -= width + PILL_GAP;
     }
     y += lineH + PILL_GAP;
@@ -272,13 +284,13 @@ export function drawSettlement(data, scale = 3) {
 
 // The PNG, after the app font has loaded (otherwise the canvas would use a fallback font).
 // subtitle: the line under the title, as on the screen (table name · date · rounding).
-export async function renderSettlementPng({ subtitle, date, transfers, nets, players }) {
+export async function renderSettlementPng({ subtitle, date, transfers, nets, sheep, players }) {
   try {
     await Promise.all([document.fonts.load(`800 26px Rubik`), document.fonts.load(`700 16px Rubik`), document.fonts.load(`400 15px Rubik`)]);
   } catch {
     // Offline or blocked: draw with the fallback font.
   }
-  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, players });
+  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, sheep, players });
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('לא הצלחנו ליצור את התמונה');
   return new File([blob], imageFileName(date), { type: 'image/png' });

@@ -9,7 +9,7 @@
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
---         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot
+--         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot; 410+: "כבש הערב"
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -402,6 +402,13 @@ begin
       (398, 'Q removes P''s seat',                                   'Q', $$delete from public.table_players where id = 'b0000000-0000-4000-8000-000000000002'$$, 'rows:1'),
       (399, '…P''s cash goes with it, logged once as the seat removal', 'Q', $$select (select count(*) from public.cash_payments where payer_id = 'b0000000-0000-4000-8000-000000000002') + (select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'cash_removed')$$, 'count:1'),
       (400, 'cash_payments: no update for users, nothing for anon',  'M', $$select count(*) from (values (1)) v(x) where has_table_privilege('authenticated', 'public.cash_payments', 'UPDATE') or has_table_privilege('anon', 'public.cash_payments', 'SELECT') or not has_table_privilege('authenticated', 'public.cash_payments', 'SELECT')$$, 'count:0'),
+
+      -- ---------------- "🐑 כבש הערב" (T2: Q manages, P co-manages, C is a plain member) ----------------
+      (410, '"כבש הערב" is on by default',                           'Q', $$select count(*) from public.poker_tables where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and sheep$$, 'count:1'),
+      (411, 'Co-manager P turns the sheep off',                      'P', $$update public.poker_tables set sheep = false where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:1'),
+      (412, 'A plain member (C) cannot change it',                   'C', $$update public.poker_tables set sheep = true where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:0'),
+      (413, 'The sheep is locked after the game ended (T1)',         'M', $$update public.poker_tables set sheep = false where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
+      (414, 'Log: P turned the sheep off',                           'Q', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'sheep_changed' and actor_id = '22222222-2222-4222-8222-222222222222' and details ->> 'on' = 'false'$$, 'count:1'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 8 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments') and rowsecurity$$, 'count:8'),
