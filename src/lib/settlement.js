@@ -208,13 +208,11 @@ function planWithoutSmall(bal, minCount, currentSmall, min) {
   return null;
 }
 
-// entries: [{ id, net }] where net = final chips − total buy-in (may be fractional).
-// unit: "עיגול סכומים" (1 / 5 / 10 / 50). Every net and every transfer is a
-// multiple of it: the plan is searched in units and scaled back.
-// Returns the rounded nets and the transfers [{ from, to, amount }].
-export function settle(entries, { unit = 1 } = {}) {
-  const nets = roundNets(entries, unit);
-  const active = nets.filter((e) => e.net !== 0);
+// Transfers that settle these balances ([{ id, net }], summing to 0), with
+// every amount a multiple of unit (when the balances are).
+function planTransfers(balances, unit) {
+  const active = balances.filter((e) => e.net !== 0);
+  if (active.some((e) => e.net % unit !== 0)) unit = 1;
   const bal = active.map((e) => e.net / unit);
   const min = Math.ceil(MIN_TRANSFER / unit);
   let plan = bestPlan(bal, min);
@@ -228,10 +226,96 @@ export function settle(entries, { unit = 1 } = {}) {
   }
 
   const loss = new Map(active.map((e) => [e.id, e.net]));
-  const transfers = plan.transfers
-    .map(([i, j, amount]) => ({ from: active[i].id, to: active[j].id, amount: amount * unit }))
-    // Group by payer (biggest loser first), biggest transfer first.
-    .sort((a, b) => loss.get(a.from) - loss.get(b.from) || b.amount - a.amount);
+  return (
+    plan.transfers
+      .map(([i, j, amount]) => ({ from: active[i].id, to: active[j].id, amount: amount * unit }))
+      // Group by payer (biggest loser first), biggest transfer first.
+      .sort((a, b) => loss.get(a.from) - loss.get(b.from) || b.amount - a.amount)
+  );
+}
 
-  return { nets, transfers };
+// Cash a player already paid ({ from, holder, amount }): valid entries only.
+export function cleanCash(cash, ids) {
+  return (cash ?? []).filter(
+    (c) => Number.isInteger(c.amount) && c.amount > 0 && c.from !== c.holder && ids.has(c.from) && ids.has(c.holder)
+  );
+}
+
+// Who gets a cash bundle as it is (no change needed): someone still owed at
+// least the whole bundle. Best: an exact match (the holder first: keeping it
+// is no handoff at all), then the holder, then whoever is left with no tiny
+// remainder, the smallest remainder first.
+function bundleTarget(owed, holder, amount) {
+  let best = null;
+  let bestScore = null;
+  for (const [id, claim] of owed) {
+    if (claim < amount) continue;
+    const rest = claim - amount;
+    const score = [rest === 0 ? 0 : 1, id === holder ? 0 : 1, rest === 0 || rest >= MIN_TRANSFER ? 0 : 1, rest];
+    if (!bestScore || lessThan(score, bestScore)) {
+      best = id;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+// Lexicographic comparison of two score arrays.
+function lessThan(a, b) {
+  for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] < b[k];
+  return false;
+}
+
+// Hands every cash bundle to winners. owed: id -> what they're still owed
+// (mutated). Returns [{ holder, to, amount }]; to === holder means "keeps it".
+function handOffCash(cash, owed) {
+  const handoffs = [];
+  const give = (holder, to, amount) => {
+    owed.set(to, owed.get(to) - amount);
+    const same = handoffs.find((h) => h.holder === holder && h.to === to);
+    if (same) same.amount += amount;
+    else handoffs.push({ holder, to, amount });
+  };
+  // Biggest bundles first: they're the hardest to place whole.
+  for (const c of [...cash].sort((a, b) => b.amount - a.amount)) {
+    const owedNow = new Map([...owed].filter(([, v]) => v > 0));
+    const whole = bundleTarget(owedNow, c.holder, c.amount);
+    if (whole !== null) {
+      give(c.holder, whole, c.amount);
+      continue;
+    }
+    // Nobody is owed the whole bundle: split it (the holder keeps their share first).
+    let left = c.amount;
+    while (left > 0) {
+      const open = [...owed].filter(([, v]) => v > 0);
+      if (open.length === 0) break;
+      const self = open.find(([id]) => id === c.holder);
+      const [to, claim] = self ?? open.reduce((a, b) => (b[1] > a[1] ? b : a));
+      const amount = Math.min(left, claim);
+      give(c.holder, to, amount);
+      left -= amount;
+    }
+  }
+  return handoffs.sort((a, b) => b.amount - a.amount);
+}
+
+// entries: [{ id, net }] where net = final chips − total buy-in (may be fractional).
+// unit: "עיגול סכומים" (1 / 5 / 10 / 50). Every net and every transfer is a
+// multiple of it: the plan is searched in units and scaled back.
+// cash: [{ from, holder, amount }] already paid in cash during the night (e.g.
+// a player who lost and left 200 ₪ with someone). Only what's still owed is
+// settled by transfers; the holder hands the cash on to winners (cashHandoffs).
+// Returns the rounded nets (the night's results, cash included), the cash
+// handoffs [{ holder, to, amount }] and the transfers [{ from, to, amount }].
+export function settle(entries, { unit = 1, cash = [] } = {}) {
+  const nets = roundNets(entries, unit);
+  const paid = cleanCash(cash, new Set(nets.map((e) => e.id)));
+  if (paid.length === 0) return { nets, cashHandoffs: [], transfers: planTransfers(nets, unit) };
+
+  // What each player still owes (< 0) or is owed (> 0) after the cash they paid.
+  const owed = new Map(nets.map((e) => [e.id, e.net]));
+  for (const c of paid) owed.set(c.from, owed.get(c.from) + c.amount);
+  const cashHandoffs = handOffCash(paid, owed);
+  const rest = nets.map((e) => ({ id: e.id, net: owed.get(e.id) }));
+  return { nets, cashHandoffs, transfers: planTransfers(rest, unit) };
 }

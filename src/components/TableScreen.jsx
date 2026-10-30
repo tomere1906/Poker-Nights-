@@ -31,6 +31,8 @@ export default function TableScreen({
   onMarkOut,
   onMarkBack,
   tableName = null,
+  cash = [],
+  myPlayerId = null,
   showToast,
 }) {
   // { type: 'add', seat | position } | { type: 'player', id } | { type: 'seat-self', seat }
@@ -185,6 +187,11 @@ export default function TableScreen({
         <PlayerSheet
           key={activePlayer.id}
           player={activePlayer}
+          players={players}
+          cashLeft={cash
+            .filter((c) => c.from === activePlayer.id)
+            .map((c) => ({ ...c, holderName: players.find((p) => p.id === c.holder)?.name ?? 'שחקן' }))}
+          defaultHolderId={myPlayerId}
           rebuyAmounts={settings.rebuyAmounts}
           canManage={canManage}
           canSelfAdd={canSelfAdd(activePlayer)}
@@ -201,9 +208,9 @@ export default function TableScreen({
           // Leaving mid-game only makes sense once the game is on.
           onMarkOut={
             started && onMarkOut
-              ? (kind, amount) => {
+              ? (kind, amount, cashLeft) => {
                   close();
-                  act(() => onMarkOut(activePlayer, kind, amount), `${activePlayer.name} יצא מהמשחק`);
+                  act(() => onMarkOut(activePlayer, kind, amount, cashLeft), `${activePlayer.name} יצא מהמשחק`);
                 }
               : undefined
           }

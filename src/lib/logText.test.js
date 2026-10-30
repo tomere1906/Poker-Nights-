@@ -41,6 +41,11 @@ describe('describeLog: exits and table names', () => {
     expect(say('rounding_changed', { old: 10, new: 1 }, 'תומר')).toBe('תומר שינה: בלי עיגול (לשקל)');
   });
 
+  it('describes cash paid during the night', () => {
+    expect(say('cash_added', { name: 'נדב', holder: 'תומר', amount: 200 }, 'תומר')).toBe('תומר רשם שנדב שילם 200 ₪ מזומן (אצל תומר) 💵');
+    expect(say('cash_removed', { name: 'נדב', holder: 'תומר', amount: 200 }, 'תומר')).toBe('תומר מחק מזומן של 200 ₪ של נדב');
+  });
+
   it('describes new buy-in amounts', () => {
     expect(say('settings_changed', { initial_buy_in: 200, rebuy_amounts: [200, 500] }, 'תומר')).toBe('תומר עדכן את הסכומים: כניסה 200 ₪ · +200 +500');
     expect(say('settings_changed', {}, 'תומר')).toBe('תומר עדכן את סכומי הכניסה');

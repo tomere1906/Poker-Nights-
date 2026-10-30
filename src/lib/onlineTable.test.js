@@ -30,6 +30,7 @@ function raw(overrides = {}) {
       { user_id: 'waiting', is_co_manager: false, profile: { display_name: 'בן', color: null } },
     ],
     log: [],
+    cash: [],
     ...overrides,
   };
 }
@@ -104,5 +105,14 @@ describe('online results and exits', () => {
     expect(cleanTableName('  שישי  ')).toBe('שישי');
     expect(cleanTableName('   ')).toBeNull();
     expect(cleanTableName('א'.repeat(40))).toHaveLength(30);
+  });
+});
+
+describe('toView: cash', () => {
+  it('maps cash rows to the local shape and finds my seat', () => {
+    const v = toView(raw({ cash: [{ id: 'c1', payer_id: 'p-guest', holder_id: 'p-user', amount: 200 }] }), P);
+    expect(v.cash).toEqual([{ id: 'c1', from: 'p-guest', holder: 'p-user', amount: 200 }]);
+    expect(v.myPlayerId).toBe('p-user');
+    expect(toView(raw(), M).myPlayerId).toBe(null);
   });
 });

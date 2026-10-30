@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200]
 // started: false during seating, true once the game is on.
 // endMode: 'net' -> finals hold each player's signed profit/loss;
 //          'chips' -> finals hold the chips each player left with.
+// cash: cash already paid during the night, [{ id, from, holder, amount }]
+//       (player ids): settled first, only the rest is transferred.
 export const initialState = {
   tableOpen: false,
   settings: DEFAULT_SETTINGS,
@@ -28,6 +30,7 @@ export const initialState = {
   started: false,
   finals: {},
   endMode: 'net',
+  cash: [],
 };
 
 const positiveInt = (n) => Number.isInteger(n) && n > 0;
@@ -108,7 +111,8 @@ export function normalizeState(state) {
   // Saves from before the start screen: a table with players is still open.
   const tableOpen = state.tableOpen ?? players.length > 0;
   const settings = cleanSettings(state.settings ?? DEFAULT_SETTINGS);
-  return { ...initialState, ...state, players, started, finals, endMode, tableOpen, settings };
+  const cash = Array.isArray(state.cash) ? state.cash : [];
+  return { ...initialState, ...state, players, started, finals, endMode, tableOpen, settings, cash };
 }
 
 function nextColor(players) {
@@ -171,6 +175,7 @@ export function gameReducer(state, action) {
       return {
         ...state,
         finals,
+        cash: state.cash.filter((c) => c.from !== action.id && c.holder !== action.id),
         // During setup the seat just becomes free; once started, close the gap.
         players: state.started ? rest.map((p) => (p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)) : rest,
       };
@@ -195,6 +200,15 @@ export function gameReducer(state, action) {
         players: state.players.map((p) => (p.id === action.id ? { ...p, out: null } : p)),
       };
     }
+    case 'addCash': {
+      // Cash paid during the night (e.g. left with someone when leaving).
+      const ids = new Set(state.players.map((p) => p.id));
+      const { from, holder, amount } = action;
+      if (!ids.has(from) || !ids.has(holder) || from === holder || !positiveInt(amount)) return state;
+      return { ...state, cash: [...state.cash, { id: newId(), from, holder, amount }] };
+    }
+    case 'removeCash':
+      return { ...state, cash: state.cash.filter((c) => c.id !== action.id) };
     case 'startGame':
       return { ...state, started: true, players: compactSeats(state.players) };
     case 'moveSeat': {

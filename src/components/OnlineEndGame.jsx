@@ -63,7 +63,10 @@ export default function OnlineEndGame({ view, actions, onBack, onSettle, onError
 
   return (
     <EndGame
-      state={{ players: view.players, finals, endMode: view.endMode }}
+      state={{ players: view.players, finals, endMode: view.endMode, cash: view.cash }}
+      defaultHolderId={view.myPlayerId}
+      onAddCash={(cash) => actions.addCash(cash).catch((e) => onError(e.message))}
+      onRemoveCash={(id) => actions.removeCash(id).catch((e) => onError(e.message))}
       onMode={(mode) => actions.setEndMode(mode).catch((e) => onError(e.message))}
       onFinal={onFinal}
       onBack={onBack}

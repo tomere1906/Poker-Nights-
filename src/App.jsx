@@ -199,7 +199,11 @@ export default function App() {
           onUndo={(player) => dispatch({ type: 'undoBuyIn', id: player.id })}
           onRemove={(player) => dispatch({ type: 'removePlayer', id: player.id })}
           onMove={(id, seat) => dispatch({ type: 'moveSeat', id, seat })}
-          onMarkOut={(player, kind, chips) => dispatch({ type: 'markOut', id: player.id, kind, chips })}
+          cash={state.cash}
+          onMarkOut={(player, kind, chips, cash) => {
+            dispatch({ type: 'markOut', id: player.id, kind, chips });
+            if (cash) dispatch({ type: 'addCash', ...cash });
+          }}
           onMarkBack={(player) => dispatch({ type: 'markBack', id: player.id })}
           onStart={() => dispatch({ type: 'startGame' })}
           onEnd={() => setView('end')}
@@ -212,6 +216,8 @@ export default function App() {
           state={state}
           onMode={(mode) => dispatch({ type: 'setEndMode', mode })}
           onFinal={(id, amount) => dispatch({ type: 'setFinal', id, amount })}
+          onAddCash={(cash) => dispatch({ type: 'addCash', ...cash })}
+          onRemoveCash={(id) => dispatch({ type: 'removeCash', id })}
           onBack={() => setView('table')}
           onSettle={() => {
             setView('settle');
@@ -225,6 +231,7 @@ export default function App() {
           players={players}
           entries={localNets}
           rounding={settings.rounding}
+          cash={state.cash}
           onRoundingChange={(unit) => dispatch({ type: 'setRounding', unit })}
           onBack={() => setView('end')}
         >

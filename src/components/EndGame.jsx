@@ -2,6 +2,62 @@ import { useRef, useState } from 'react';
 import { EXITS, netOf, potTotal, totalIn } from '../lib/game.js';
 import { formatShekel, parseAmount } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
+import CashForm from './CashForm.jsx';
+
+// "מזומן ששולם": cash already paid (when leaving, or at the end). Only the rest
+// is settled by transfers. Without onAdd/onRemove it's read-only.
+function CashSection({ players, cash, defaultHolderId, onAdd, onRemove }) {
+  const [adding, setAdding] = useState(false);
+  const nameOf = (id) => players.find((p) => p.id === id)?.name ?? 'שחקן';
+  if (cash.length === 0 && !onAdd) return null;
+  return (
+    <section className="mt-4 rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5">
+      <h3 className="font-bold">מזומן ששולם 💵</h3>
+      <p className="mb-2 text-xs text-slate-400">מה שכבר שולם במזומן יקוזז, ורק היתרה תועבר</p>
+      {cash.length > 0 && (
+        <ul className="mb-2 space-y-1.5">
+          {cash.map((c) => (
+            <li key={c.id} className="flex items-center gap-2 rounded-2xl bg-slate-950/40 px-3 py-2 text-sm">
+              <span className="flex-1">
+                <b>{nameOf(c.from)}</b> שילם <b className="text-amber-200">{formatShekel(c.amount)}</b> · אצל <b>{nameOf(c.holder)}</b>
+              </span>
+              {onRemove && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(c.id)}
+                  aria-label="מחק"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 active:scale-90 active:bg-white/10"
+                >
+                  ✕
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {onAdd &&
+        (adding ? (
+          <CashForm
+            players={players}
+            defaultHolderId={defaultHolderId}
+            onSave={(entry) => {
+              setAdding(false);
+              onAdd(entry);
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="w-full rounded-2xl border-2 border-dashed border-white/15 py-2.5 text-sm font-bold text-slate-300 active:scale-[0.98]"
+          >
+            + רשום מזומן ששולם
+          </button>
+        ))}
+    </section>
+  );
+}
 
 function NetBadge({ net }) {
   const tone = net > 0 ? 'bg-emerald-400/15 text-emerald-300' : net < 0 ? 'bg-rose-400/15 text-rose-300' : 'bg-white/10 text-slate-300';
@@ -48,8 +104,9 @@ function AmountField({ value, onChange, placeholder, inputRef, enterKeyHint }) {
   );
 }
 
-export default function EndGame({ state, onMode, onFinal, onBack, onSettle }) {
+export default function EndGame({ state, onMode, onFinal, onBack, onSettle, defaultHolderId = null, onAddCash, onRemoveCash }) {
   const { players, finals, endMode } = state;
+  const cash = state.cash ?? [];
   // In net mode, a typed amount waits here until a +/− is chosen.
   const [signs, setSigns] = useState({});
   const [drafts, setDrafts] = useState({});
@@ -143,6 +200,11 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle }) {
                     <span>בפנים {formatShekel(totalIn(p))}</span>
                     {net !== null && <NetBadge net={net} />}
                     {needsSign && <span className="font-bold text-amber-300">+ או −?</span>}
+                    {cash.some((c) => c.from === p.id) && (
+                      <span className="text-amber-200">
+                        💵 שילם {formatShekel(cash.filter((c) => c.from === p.id).reduce((s, c) => s + c.amount, 0))}
+                      </span>
+                    )}
                   </p>
                 </div>
   
@@ -201,6 +263,8 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle }) {
           );
         })}
       </ul>
+
+      <CashSection players={ordered} cash={cash} defaultHolderId={defaultHolderId} onAdd={onAddCash} onRemove={onRemoveCash} />
 
       {/* The dark band under the button (pb) keeps the screen's bottom edge the page
           color: iOS Safari tints its toolbar from what touches that edge. */}

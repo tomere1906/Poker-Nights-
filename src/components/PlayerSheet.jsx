@@ -5,6 +5,7 @@ import { PALETTE } from '../lib/colors.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
 import Avatar from './Avatar.jsx';
+import CashForm from './CashForm.jsx';
 
 function buyInCountLabel(count) {
   if (count === 0) return 'אין קניות';
@@ -108,8 +109,31 @@ function ExitPicker({ player, onPick }) {
   );
 }
 
+// After a losing exit: "השאיר מזומן?" (amount + who holds it), or no.
+function LeftCash({ player, players, loss, defaultHolderId, onDone }) {
+  return (
+    <div className="animate-fade-in mb-5 space-y-2 rounded-2xl bg-slate-800/70 p-3">
+      <p className="font-bold">השאיר מזומן? 💵</p>
+      <p className="text-sm text-slate-400">אם {player.name} שילם חלק מההפסד במזומן, הוא יחושב בסוף ורק היתרה תועבר</p>
+      <CashForm
+        players={players}
+        payerId={player.id}
+        defaultAmount={loss}
+        defaultHolderId={defaultHolderId}
+        saveLabel="השאיר מזומן ✓"
+        onSave={(cash) => onDone(cash)}
+        onCancel={() => onDone(null)}
+        cancelLabel="לא השאיר"
+      />
+    </div>
+  );
+}
+
 export default function PlayerSheet({
   player,
+  players = [],
+  cashLeft = [],
+  defaultHolderId = null,
   rebuyAmounts,
   canManage = true,
   canSelfAdd = false,
@@ -126,6 +150,9 @@ export default function PlayerSheet({
   const [showHistory, setShowHistory] = useState(!canManage && !canSelfAdd);
   const [editing, setEditing] = useState(false);
   const [pickingExit, setPickingExit] = useState(false);
+  // An exit with a loss waits here for the "השאיר מזומן?" answer.
+  const [pendingExit, setPendingExit] = useState(null);
+
   const count = player.buyIns.length;
   const lastBuyIn = player.buyIns[count - 1];
   const times = timesOf(player);
@@ -175,6 +202,11 @@ export default function PlayerSheet({
           <div className="min-w-0 flex-1">
             <p className="font-bold">{exit.label}</p>
             <p className="text-sm text-slate-400">יצא מהמשחק עם {formatShekel(player.out.chips)}</p>
+            {cashLeft.map((c) => (
+              <p key={c.id} className="text-sm text-amber-200">
+                💵 השאיר {formatShekel(c.amount)} מזומן אצל {c.holderName}
+              </p>
+            ))}
           </div>
           {canManage && onMarkBack && (
             <button
@@ -193,7 +225,23 @@ export default function PlayerSheet({
           player={player}
           onPick={(kind, amount) => {
             setPickingExit(false);
-            onMarkOut(kind, amount);
+            const loss = totalIn(player) - (kind === 'lost_all' ? 0 : kind === 'amount' ? amount : totalIn(player));
+            const others = players.filter((p) => p.id !== player.id);
+            if (loss > 0 && others.length > 0) setPendingExit({ kind, amount, loss });
+            else onMarkOut(kind, amount, null);
+          }}
+        />
+      )}
+
+      {pendingExit && !exit && (
+        <LeftCash
+          player={player}
+          players={players}
+          loss={pendingExit.loss}
+          defaultHolderId={defaultHolderId}
+          onDone={(cash) => {
+            setPendingExit(null);
+            onMarkOut(pendingExit.kind, pendingExit.amount, cash);
           }}
         />
       )}
@@ -251,7 +299,7 @@ export default function PlayerSheet({
         <p className="mb-2 text-center text-xs text-slate-500">תיקונים ומחיקות – רק אצל המנהלים</p>
       )}
 
-      {canManage && onMarkOut && !exit && !pickingExit && (
+      {canManage && onMarkOut && !exit && !pickingExit && !pendingExit && (
         <button
           type="button"
           onClick={() => setPickingExit(true)}

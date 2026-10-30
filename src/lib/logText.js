@@ -38,6 +38,10 @@ export function describeLog(entry) {
       return `${who} החזיר את ${name} למשחק`;
     case 'table_renamed':
       return d.new ? `${who} קרא לשולחן ״${d.new}״` : `${who} הסיר את שם השולחן`;
+    case 'cash_added':
+      return `${who} רשם ש${name} שילם ${formatShekel(d.amount)} מזומן (אצל ${d.holder ?? 'שחקן'}) 💵`;
+    case 'cash_removed':
+      return `${who} מחק מזומן של ${formatShekel(d.amount)} של ${name}`;
     case 'result_set':
       return `${who} הזין תוצאה ל${name}`;
     case 'member_joined':

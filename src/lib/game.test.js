@@ -204,6 +204,43 @@ describe('initials', () => {
   });
 });
 
+describe('cash paid during the night', () => {
+  const table = () => {
+    let s = gameReducer(initialState, { type: 'openTable', settings: DEFAULT_SETTINGS });
+    s = gameReducer(seat(seat(seat(s, 'נדב'), 'תומר'), 'עומר'), { type: 'startGame' });
+    return s;
+  };
+  const id = (s, name) => s.players.find((p) => p.name === name).id;
+
+  it('records and removes cash', () => {
+    let s = table();
+    s = gameReducer(s, { type: 'addCash', from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 200 });
+    expect(s.cash).toEqual([{ id: expect.any(String), from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 200 }]);
+    s = gameReducer(s, { type: 'removeCash', id: s.cash[0].id });
+    expect(s.cash).toEqual([]);
+  });
+
+  it('rejects cash to yourself, to strangers, or of no amount', () => {
+    const s = table();
+    for (const bad of [
+      { from: id(s, 'נדב'), holder: id(s, 'נדב'), amount: 50 },
+      { from: id(s, 'נדב'), holder: 'nobody', amount: 50 },
+      { from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 0 },
+    ]) {
+      expect(gameReducer(s, { type: 'addCash', ...bad })).toBe(s);
+    }
+  });
+
+  it('removing a player drops their cash entries', () => {
+    let s = table();
+    s = gameReducer(s, { type: 'addCash', from: id(s, 'נדב'), holder: id(s, 'תומר'), amount: 200 });
+    s = gameReducer(s, { type: 'addCash', from: id(s, 'עומר'), holder: id(s, 'נדב'), amount: 20 });
+    s = gameReducer(s, { type: 'removePlayer', id: id(s, 'תומר') });
+    expect(s.cash.map((c) => c.amount)).toEqual([20]);
+    expect(normalizeState({ players: [] }).cash).toEqual([]);
+  });
+});
+
 describe('leaving mid-game', () => {
   const game = (mode = 'net') => {
     let s = { ...add(add(started, 'א', 0, 100), 'ב', 1, 50), endMode: mode };

@@ -158,6 +158,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         players={view.players}
         entries={entries}
         rounding={view.settings.rounding}
+        cash={view.cash}
         tableName={view.name}
         date={view.endedAt}
         notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
@@ -184,6 +185,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         players={view.players}
         entries={entries}
         rounding={view.settings.rounding}
+        cash={view.cash}
         onRoundingChange={view.isManager ? (unit) => actions.setRounding(unit).catch(fail) : null}
         tableName={view.name}
         onBack={() => setStep('end')}
@@ -210,6 +212,8 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         started={view.started}
         settings={view.settings}
         tableName={view.name}
+        cash={view.cash}
+        myPlayerId={view.myPlayerId}
         canManage={view.canManage}
         canSelfAdd={canSelfAdd}
         people={view.unseated}

@@ -68,7 +68,7 @@ export async function listOpenTables() {
 }
 
 async function loadTable(tableId) {
-  const [table, players, buyIns, members, log] = await Promise.all([
+  const [table, players, buyIns, members, log, cash] = await Promise.all([
     // poker_tables reaches profiles several ways (manager, members, players): name the FK.
     supabase
       .from('poker_tables')
@@ -91,8 +91,16 @@ async function loadTable(tableId) {
       .eq('table_id', tableId)
       .order('created_at', { ascending: false })
       .limit(300),
+    supabase.from('cash_payments').select('id, payer_id, holder_id, amount, created_at').eq('table_id', tableId).order('created_at'),
   ]);
-  return { table: must(table), players: must(players), buyIns: must(buyIns), members: must(members), log: must(log) };
+  return {
+    table: must(table),
+    players: must(players),
+    buyIns: must(buyIns),
+    members: must(members),
+    log: must(log),
+    cash: must(cash),
+  };
 }
 
 // Same shape as a local player, plus what the online UI needs.
@@ -181,6 +189,9 @@ export function toView(raw, userId) {
     // A player who joined by invite and isn't seated yet picks their own free seat.
     canSeatSelf: !canManage && !ended && !seated.has(userId) && players.length < MAX_PLAYERS,
     myUserId: userId,
+    myPlayerId: players.find((p) => p.userId === userId)?.id ?? null,
+    // Cash paid during the night (same shape as the local game's state.cash).
+    cash: raw.cash.map((c) => ({ id: c.id, from: c.payer_id, holder: c.holder_id, amount: c.amount })),
     log: raw.log,
   };
 }
@@ -189,6 +200,10 @@ export function toView(raw, userId) {
 function makeActions(view) {
   const tableId = view.id;
   const players = () => [...view.players].sort((a, b) => a.seat - b.seat);
+
+  async function insertCash({ from, holder, amount }) {
+    must(await supabase.from('cash_payments').insert({ table_id: tableId, payer_id: from, holder_id: holder, amount }));
+  }
 
   async function setSeat(playerId, seat) {
     must(await supabase.from('table_players').update({ seat }).eq('id', playerId));
@@ -274,9 +289,20 @@ function makeActions(view) {
     },
 
     // Left mid-game: the seat stays, the exit amount prefills the end-game screen.
-    async markOut(player, kind, amount) {
+    // cash: { from, holder, amount } left with someone at the table, or null.
+    async markOut(player, kind, amount, cash = null) {
       const out = { out_kind: kind, out_chips: exitChips(player, kind, amount) };
       must(await supabase.from('table_players').update(out).eq('id', player.id));
+      if (cash) await insertCash(cash);
+    },
+
+    // Cash paid during the night (managers and co-managers; logged).
+    async addCash(cash) {
+      await insertCash(cash);
+    },
+
+    async removeCash(id) {
+      must(await supabase.from('cash_payments').delete().eq('id', id));
     },
 
     // "חזר לשחק": no exit and no result yet.

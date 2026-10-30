@@ -9,7 +9,7 @@
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
---         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding
+--         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid during the night
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -379,8 +379,31 @@ begin
       (377, 'Rounding is locked after the game ended',        'M', $$update public.poker_tables set rounding = 50 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
       (378, 'Log: Q changed the rounding to 50',              'P', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'rounding_changed' and actor_id = '44444444-4444-4444-8444-444444444444' and (details ->> 'new')::int = 50$$, 'count:1'),
 
+      -- ---------------- cash paid during the night (T2) ----------------
+      -- T2 is open; Q manages it, P is its co-manager (374), seats: Q, P.
+      (380, 'Q records cash: P left 200 with Q (T2)',            'Q', $$insert into public.cash_payments (id, table_id, payer_id, holder_id, amount) values ('ca000000-0000-4000-8000-000000000001', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001', 200)$$, 'ok'),
+      (381, 'Co-manager P records cash too',                     'P', $$insert into public.cash_payments (id, table_id, payer_id, holder_id, amount) values ('ca000000-0000-4000-8000-000000000002', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 50)$$, 'ok'),
+      (382, 'C joins T2',                                        'C', $$insert into public.table_members (table_id, invite_code) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'code-t2')$$, 'ok'),
+      (383, 'A plain member (C) cannot record cash',             'C', $$insert into public.cash_payments (table_id, payer_id, holder_id, amount) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001', 30)$$, 'deny'),
+      (384, 'Everyone at the table sees the cash (C)',           'C', $$select count(*) from public.cash_payments where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'count:2'),
+      (385, 'S cannot see any cash',                             'S', $$select count(*) from public.cash_payments$$, 'count:0'),
+      (386, 'Anon cannot read cash',                             'anon', $$select count(*) from public.cash_payments$$, 'deny'),
+      (387, 'Payer and holder must be two people',               'Q', $$insert into public.cash_payments (table_id, payer_id, holder_id, amount) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000002', 30)$$, 'error:23514'),
+      (388, 'Cash must be a positive amount',                    'Q', $$insert into public.cash_payments (table_id, payer_id, holder_id, amount) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001', 0)$$, 'error:23514'),
+      (389, 'The holder must sit at the same table',             'Q', $$insert into public.cash_payments (table_id, payer_id, holder_id, amount) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 30)$$, 'error:23503'),
+      (390, 'Nobody records cash in someone else''s name',       'Q', $$insert into public.cash_payments (table_id, payer_id, holder_id, amount, created_by) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001', 30, '11111111-1111-4111-8111-111111111111')$$, 'deny'),
+      (391, 'Cash can''t be edited (delete + add only)',         'Q', $$update public.cash_payments set amount = 1 where id = 'ca000000-0000-4000-8000-000000000001'$$, 'deny'),
+      (392, 'C cannot delete cash',                              'C', $$delete from public.cash_payments where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:0'),
+      (393, 'No cash at an ended table (T1)',                    'M', $$insert into public.cash_payments (table_id, payer_id, holder_id, amount) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 30)$$, 'deny'),
+      (394, 'Q deletes P''s 200',                                'Q', $$delete from public.cash_payments where id = 'ca000000-0000-4000-8000-000000000001'$$, 'rows:1'),
+      (395, 'Log: 2 cash entries added (Q, P) and 1 deleted (Q)', 'P', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and ((action = 'cash_added' and actor_id in ('44444444-4444-4444-8444-444444444444', '22222222-2222-4222-8222-222222222222') and (details ->> 'amount')::int in (200, 50)) or (action = 'cash_removed' and actor_id = '44444444-4444-4444-8444-444444444444' and (details ->> 'amount')::int = 200))$$, 'count:3'),
+      (396, 'Q removes P''s seat',                               'Q', $$delete from public.table_players where id = 'b0000000-0000-4000-8000-000000000002'$$, 'rows:1'),
+      (397, '…its cash goes with it',                            'Q', $$select count(*) from public.cash_payments where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'count:0'),
+      (398, '…logged once as the seat removal (no extra cash_removed)', 'Q', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'cash_removed'$$, 'count:1'),
+      (399, 'cash_payments: no update for users, nothing for anon', 'M', $$select count(*) from (values (1)) v(x) where has_table_privilege('authenticated', 'public.cash_payments', 'UPDATE') or has_table_privilege('anon', 'public.cash_payments', 'SELECT') or not has_table_privilege('authenticated', 'public.cash_payments', 'SELECT')$$, 'count:0'),
+
       -- ---------------- every table has RLS on ----------------
-      (90, 'RLS is enabled on all 7 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games') and rowsecurity$$, 'count:7'),
+      (90, 'RLS is enabled on all 8 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments') and rowsecurity$$, 'count:8'),
       (91, 'Realtime publishes only table_log',        'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename <> 'table_log'$$, 'count:0'),
       (92, '…and table_log is published',              'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'table_log'$$, 'count:1')
     ) as t(i, name, who, sql, expect)

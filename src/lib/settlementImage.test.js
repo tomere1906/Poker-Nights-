@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ellipsize, imageFileName, layoutPills } from './settlementImage.js';
+import { ellipsize, groupHandoffs, imageFileName, layoutPills } from './settlementImage.js';
 
 // A fake text measure: every character is 10px wide.
 const measure = (t) => [...t].length * 10;
@@ -20,5 +20,21 @@ describe('settlement image helpers', () => {
 
   it('names the file by the game date', () => {
     expect(imageFileName(new Date(2026, 9, 25, 23, 30).getTime())).toBe('poker-nights-2026-10-25.png');
+  });
+});
+
+describe('groupHandoffs', () => {
+  it('groups cash handoffs by who holds the cash', () => {
+    expect(
+      groupHandoffs([
+        { holder: 'tomer', to: 'omer', amount: 200 },
+        { holder: 'ben', to: 'ido', amount: 50 },
+        { holder: 'tomer', to: 'ido', amount: 150 },
+      ])
+    ).toEqual([
+      { holder: 'tomer', rows: [{ to: 'omer', amount: 200 }, { to: 'ido', amount: 150 }], total: 350 },
+      { holder: 'ben', rows: [{ to: 'ido', amount: 50 }], total: 50 },
+    ]);
+    expect(groupHandoffs()).toEqual([]);
   });
 });
