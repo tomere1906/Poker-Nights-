@@ -13,8 +13,8 @@ and column grants. The checks below attack exactly that: the database directly.
 | Check | Result |
 |---|---|
 | `supabase/tests/rls_test.sql`: 329 cases that try to break every rule as manager, co-manager, player, stranger and signed-out visitor | **329 / 329 passed ✅** (2026-11-10, after both name migrations). The first run after `clean_names` found 5 failures, all from that migration turning blank names into "שחקן" / "no name" instead of rejecting them; fixed by `20261110130000_clean_names_keep_blank_checks.sql` (tests 432, 440, 441). |
-| Supabase **Security Advisor** | ⏳ |
-| Supabase **Performance Advisor** | ⏳ |
+| Supabase **Security Advisor** | ✅ One warning, accepted: "Leaked Password Protection Disabled". It checks passwords against leaked lists; the app has no passwords (Google sign-in only, email/password sign-up is off, verified by the attack test). (2026-11-10) |
+| Supabase **Performance Advisor** | ✅ 0 warnings; 4 INFO "Unused Index" (cash_payments, poker_tables, table_members, buy_ins): foreign-key / policy indexes not used yet because there is little real data. Kept on purpose. (2026-11-10) |
 
 ## 2. Outside attack test (bypassing the app)
 
