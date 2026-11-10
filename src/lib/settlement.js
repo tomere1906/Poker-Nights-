@@ -338,12 +338,17 @@ function mergeRows(cashRows, transfers) {
 // transfers, then the fewest rows, then the fewest transfers. Returns rows
 // [{ from, to, amount, cash }], or null when the bills can't all be placed.
 // absent: Set of ids who are "לא כאן". Cash goes only to winners who are
-// present; an absent winner is paid by transfer. Only a bill that fits no
-// present winner goes to an absent one (the least cash possible).
-function placeBills(nets, bills, unit, absent) {
+// present; an absent winner is paid by transfer. A bill no present winner can
+// take whole is handed to someone else who is present (the manager when
+// possible, even if they lost), who passes it on by transfer: it raises their
+// debt by the bill. Only with nobody else present does cash reach an absent winner.
+// manager: id of the player who should take such a bill, when present.
+function placeBills(nets, bills, unit, absent, manager = null) {
   const winners = nets.filter((e) => e.net > 0);
   const present = winners.filter((w) => !absent.has(w.id));
-  const units = splitUnfitBills(bills, present.length ? present : winners).sort((x, y) => y.amount - x.amount);
+  const here = nets.filter((e) => !absent.has(e.id)).map((e) => e.id);
+  // Without present winners, bills go whole to whoever takes them.
+  const units = (present.length ? splitUnfitBills(bills, present) : [...bills]).sort((x, y) => y.amount - x.amount);
   const owed = new Map(winners.map((w) => [w.id, w.net]));
   const placed = [];
   let best = null;
@@ -359,7 +364,8 @@ function placeBills(nets, bills, unit, absent) {
     const transfers = planTransfers([...balance].map(([id, net]) => ({ id, net })), unit, free);
     const rows = mergeRows(placed, transfers);
     const away = placed.reduce((sum, p) => sum + (absent.has(p.to) ? p.amount : 0), 0);
-    const score = [away, transfers.filter((t) => t.amount < MIN_TRANSFER).length, rows.length, transfers.length];
+    const carried = placed.reduce((sum, p) => sum + (p.carried ? p.amount : 0), 0);
+    const score = [away, carried, transfers.filter((t) => t.amount < MIN_TRANSFER).length, rows.length, transfers.length];
     if (!best || lexLess(score, best.score)) best = { score, rows };
   }
 
@@ -374,13 +380,26 @@ function placeBills(nets, bills, unit, absent) {
     const fits = [...owed]
       .filter(([, claim]) => claim >= bill.amount)
       .sort(([, x], [, y]) => (y === bill.amount) - (x === bill.amount) || y - x);
-    const here = fits.filter(([id]) => !absent.has(id));
-    for (const [id, claim] of here.length ? here : fits) {
-      owed.set(id, claim - bill.amount);
-      placed.push({ from: bill.from, to: id, amount: bill.amount });
+    const fitsHere = fits.filter(([id]) => !absent.has(id));
+    if (fitsHere.length || !here.some((id) => id !== bill.from)) {
+      for (const [id, claim] of fitsHere.length ? fitsHere : fits) {
+        owed.set(id, claim - bill.amount);
+        placed.push({ from: bill.from, to: id, amount: bill.amount });
+        place(k + 1);
+        placed.pop();
+        owed.set(id, claim);
+      }
+      return;
+    }
+    // Nobody present is owed it: someone present takes it and passes it on.
+    const carriers = here.filter((id) => id !== bill.from);
+    for (const id of carriers.includes(manager) ? [manager] : carriers) {
+      const claim = owed.get(id);
+      if (claim !== undefined) owed.set(id, 0);
+      placed.push({ from: bill.from, to: id, amount: bill.amount, carried: true });
       place(k + 1);
       placed.pop();
-      owed.set(id, claim);
+      if (claim !== undefined) owed.set(id, claim);
     }
   })(0);
 
@@ -418,8 +437,10 @@ function markCash(rows, paid) {
 // one list of rows [{ from, to, amount, cash }]: payer → receiver, `cash` of
 // the amount paid in cash (0 = all by transfer); the fewest rows.
 // absent: ids of players who are "לא כאן" (left early): cash is handed only to
-// winners who are present, so an absent winner gets a transfer instead.
-export function settle(entries, { unit = 1, cash = [], absent = [] } = {}) {
+// people who are present, so an absent winner gets a transfer instead. When no
+// present winner can take a bill, someone present takes it (manager: the
+// preferred one, else whoever keeps the settlement simplest) and passes it on.
+export function settle(entries, { unit = 1, cash = [], absent = [], manager = null } = {}) {
   const nets = roundNets(entries, unit);
   const bills = capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets);
   const cashPaid = cashByPayer(bills);
@@ -427,7 +448,7 @@ export function settle(entries, { unit = 1, cash = [], absent = [] } = {}) {
   const loss = new Map(nets.map((e) => [e.id, e.net]));
   const away = new Set(absent);
   const rows =
-    placeBills(nets, bills, unit, away) ??
+    placeBills(nets, bills, unit, away, manager) ??
     (away.size ? placeBills(nets, bills, unit, new Set()) : null) ??
     markCash(planTransfers(nets, unit), cashPaid);
   // Group by payer (biggest loser first), biggest row first.

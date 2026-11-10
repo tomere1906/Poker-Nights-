@@ -66,7 +66,8 @@ function RowAmount({ row }) {
 // "200 מזומן · 70 העברה" note; only the rest is transferred.
 // absent: ids of players who are "לא כאן" (cash goes only to winners who are
 // present; an absent winner gets a transfer). onAbsentChange(id, absent): shows
-// the "מי לא כאן?" toggles (managers, before the game is closed).
+// the "מי לא כאן?" toggles (managers, before the game is closed). manager: the
+// manager's seat, who takes cash that no present winner is owed and passes it on.
 // children: extra buttons under "share".
 export default function Settlement({
   players,
@@ -75,6 +76,7 @@ export default function Settlement({
   cash = NONE,
   absent = NONE,
   onAbsentChange = null,
+  manager = null,
   onRoundingChange = null,
   tableName = null,
   date = null,
@@ -89,7 +91,10 @@ export default function Settlement({
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
-  const { nets, transfers } = useMemo(() => settle(entries, { unit: rounding, cash, absent }), [entries, rounding, cash, absent]);
+  const { nets, transfers } = useMemo(
+    () => settle(entries, { unit: rounding, cash, absent, manager }),
+    [entries, rounding, cash, absent, manager]
+  );
   const away = new Set(absent);
   // The header: table name and date only.
   const details = [tableName, formatDate(when)].filter(Boolean).join(' · ');
@@ -151,7 +156,9 @@ export default function Settlement({
       {onAbsentChange && (
         <div className="mb-4 rounded-3xl bg-slate-800/70 p-3 ring-1 ring-white/5">
           <p className="text-sm font-medium text-slate-400">מי לא כאן?</p>
-          <p className="mb-2 text-xs text-slate-500">מזומן עובר רק למי שנמצא. מי שלא כאן יקבל העברה</p>
+          <p className="mb-2 text-xs text-slate-500">
+            מזומן עובר רק למי שנמצא. מי שלא כאן יקבל העברה (אם אף זוכה לא כאן, מי שנמצא לוקח את המזומן ומעביר הלאה)
+          </p>
           <div className="flex flex-wrap gap-2">
             {players.map((p) => (
               <button

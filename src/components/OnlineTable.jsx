@@ -92,6 +92,11 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
 
   // "לא כאן": cash is handed only to winners who are present.
   const absent = useMemo(() => (view ? view.players.filter(isAbsent).map((p) => p.id) : []), [view]);
+  // The manager's seat takes cash that no present winner is owed (and passes it on).
+  const managerSeat = useMemo(() => {
+    const managerId = view?.people.find((p) => p.isManager)?.userId;
+    return view?.players.find((p) => p.userId && p.userId === managerId)?.id ?? null;
+  }, [view]);
 
   const header = (
     <header className="mb-2 flex items-center gap-2">
@@ -163,6 +168,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         rounding={view.settings.rounding}
         cash={view.cash}
         absent={absent}
+        manager={managerSeat}
         tableName={view.name}
         date={view.endedAt}
         notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
@@ -191,6 +197,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         rounding={view.settings.rounding}
         cash={view.cash}
         absent={absent}
+        manager={managerSeat}
         onAbsentChange={(id, away) => actions.setAbsent(id, away).catch(fail)}
         onRoundingChange={view.isManager ? (unit) => actions.setRounding(unit).catch(fail) : null}
         tableName={view.name}

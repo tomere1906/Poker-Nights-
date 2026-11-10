@@ -269,14 +269,62 @@ describe('cash paid when settling', () => {
     expect(settle(nets, { absent: ['c', 'd'] })).toEqual(settle(nets));
   });
 
-  it('a bill bigger than every present winner is split among them first', () => {
-    // 200 bill; the present winner is owed 100, the absent one 300.
+  it('a bill bigger than every present winner: cash only to people who are here', () => {
+    // 200 bill; the present winner is owed 100, the absent one 300. The whole 200
+    // goes to the present winner, who passes the extra 100 on to the absent one.
     const result = settle(entries({ a: -400, here: 100, away: 300 }), { cash: [{ from: 'a', amount: 200 }], absent: ['away'] });
     expectRows(result);
-    expect(result.transfers.find((r) => r.to === 'here')).toEqual({ from: 'a', to: 'here', amount: 100, cash: 100 });
+    expect(result.transfers.filter((r) => r.cash > 0)).toEqual([{ from: 'a', to: 'here', amount: 200, cash: 200 }]);
+    expect(result.transfers).toContainEqual({ from: 'here', to: 'away', amount: 100, cash: 0 });
   });
 
-  it('when every winner is absent the cash still settles', () => {
+  it('no present winner: someone present takes the cash and passes it on (Ido → Fouad → Tomer)', () => {
+    // Ido paid 150 cash, Tomer (the winner) left, Fouad is here and broke even.
+    const result = settle(entries({ ido: -150, fouad: 0, tomer: 150 }), { cash: [{ from: 'ido', amount: 150 }], absent: ['tomer'] });
+    expectRows(result);
+    expect(result.transfers).toEqual([
+      { from: 'ido', to: 'fouad', amount: 150, cash: 150 },
+      { from: 'fouad', to: 'tomer', amount: 150, cash: 0 },
+    ]);
+  });
+
+  it('…combined with the carrier\'s own debt when he lost too', () => {
+    const result = settle(entries({ ido: -150, fouad: -100, tomer: 250 }), { cash: [{ from: 'ido', amount: 150 }], absent: ['tomer'] });
+    expectRows(result);
+    expect(result.transfers).toEqual([
+      { from: 'ido', to: 'fouad', amount: 150, cash: 150 },
+      { from: 'fouad', to: 'tomer', amount: 250, cash: 0 },
+    ]);
+  });
+
+  it('…the manager takes it when he is here, even if he lost', () => {
+    const nets = entries({ ido: -150, fouad: 0, omer: -50, tomer: 200 });
+    const cash = [{ from: 'ido', amount: 150 }];
+    const result = settle(nets, { cash, absent: ['tomer'], manager: 'omer' });
+    expectRows(result);
+    expect(result.transfers).toEqual([
+      { from: 'ido', to: 'omer', amount: 150, cash: 150 },
+      { from: 'omer', to: 'tomer', amount: 200, cash: 0 },
+    ]);
+    // An absent manager doesn't take it: someone else who is here does.
+    const other = settle(nets, { cash, absent: ['tomer', 'omer'], manager: 'omer' });
+    expectRows(other);
+    expect(other.transfers.filter((r) => r.cash > 0)).toEqual([{ from: 'ido', to: 'fouad', amount: 150, cash: 150 }]);
+  });
+
+  it('nobody takes cash on the way while a present winner can', () => {
+    // Omer (here) is owed 150: the bill goes straight to him, no carrier.
+    const result = settle(entries({ ido: -150, fouad: 0, omer: 150, tomer: 100, yuri: -100 }), {
+      cash: [{ from: 'ido', amount: 150 }],
+      absent: ['tomer'],
+      manager: 'fouad',
+    });
+    expectRows(result);
+    expect(result.transfers.filter((r) => r.cash > 0)).toEqual([{ from: 'ido', to: 'omer', amount: 150, cash: 150 }]);
+    expect(result.transfers.some((r) => r.from === 'fouad' || r.to === 'fouad')).toBe(false);
+  });
+
+  it('when the payer is the only one here the cash still settles', () => {
     const result = settle(entries({ a: -200, b: 200 }), { cash: [{ from: 'a', amount: 200 }], absent: ['b'] });
     expectRows(result);
     expect(result.transfers).toEqual([{ from: 'a', to: 'b', amount: 200, cash: 200 }]);
@@ -296,8 +344,8 @@ describe('cash paid when settling', () => {
       const absent = list.filter(() => rand() < 0.35).map((e) => e.id);
       const result = settle(list, { unit: 10, cash, absent });
       expectRows(result);
-      // One bill and a present winner who can take it whole: it never goes to an absent one.
-      if (cash.length === 1 && result.nets.some((e) => !absent.includes(e.id) && e.net >= cash[0].amount)) {
+      // With two or more people here, cash never reaches an absent player.
+      if (list.filter((e) => !absent.includes(e.id)).length >= 2) {
         expect(result.transfers.filter((r) => absent.includes(r.to)).every((r) => r.cash === 0)).toBe(true);
       }
     }
