@@ -30,7 +30,7 @@ would (`node supabase/tests/attack_test.mjs`).
 **Part B, two real accounts: 36 / 36 blocked ✅** (2026-11-10; total with part A: **58 / 58**).
 Account A opens a fresh test table; account B is an outsider, then a plain member.
 - B can't read any of A's table (table, seats, buy-ins, log, members, cash), can't see A's profile (they share no table), and A's table doesn't reach B's stats. Profiles have no email column at all.
-- B can't change, take over, delete or end A's table; can't seat himself or guests, move seats (also not via ), add/change/delete buy-ins, record cash or write the log; can't hide A's game for A. A can't hand the table to B either.
+- B can't change, take over, delete or end A's table; can't seat himself or guests, move seats (also not via `swap_seats`), add/change/delete buy-ins, record cash or write the log; can't hide A's game for A. A can't hand the table to B either.
 - B can't join with a wrong invite code, nor as co-manager with the right one. With the real invite B becomes a plain member who still can't add buy-ins, change the table or make himself co-manager.
 - Live updates (Realtime): both subscriptions connected as their own users; A (the owner) received the change, B received nothing. The owner's event is the control: it proves the check really listened. (The first version of this check didn't authenticate B's subscription and would have passed on a failed connection; found and fixed before recording this result.)
 - Every "change" attempt wrote the value that was already there, and the test table was deleted at the end.
