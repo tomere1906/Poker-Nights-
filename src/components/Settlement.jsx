@@ -26,7 +26,7 @@ const NONE = [];
 
 // The middle of a row: the amount and the arrow line under it.
 // - plain transfer: yellow amount, "←".
-// - all cash: green amount, "← מזומן" in green.
+// - all cash: a 💵 and the green amount, "← מזומן" in green.
 // - mixed: the usual yellow amount (only part of it is cash), and one line
 //   "200 מזומן · 70 העברה" (cash green, transfer gray) that never wraps.
 function RowAmount({ row }) {
@@ -49,7 +49,12 @@ function RowAmount({ row }) {
   }
   return (
     <div className="flex shrink-0 flex-col items-center px-1">
-      <span className="whitespace-nowrap text-lg font-extrabold text-emerald-300">{formatShekel(row.amount)}</span>
+      <span className="flex items-center gap-1 whitespace-nowrap text-lg font-extrabold text-emerald-300">
+        <span className="text-2xl leading-none" aria-hidden>
+          💵
+        </span>
+        {formatShekel(row.amount)}
+      </span>
       <span className="text-sm font-bold leading-tight">
         <span className="text-slate-400">← </span>
         <span className="text-emerald-300">מזומן</span>

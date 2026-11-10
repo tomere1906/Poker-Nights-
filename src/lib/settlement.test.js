@@ -163,9 +163,9 @@ describe('rounding ("עיגול סכומים")', () => {
 });
 
 describe('cash paid when settling', () => {
-  // The real game (the list ended at Ben; Tomer +125 is the missing winner that
-  // makes it add up). Nadav lost 250 and left 200 cash, Fouad lost 155 and left 150.
-  const night = entries({ nadav: -250, fouad: -155, yuri: -50, kashkash: -250, omer: 300, ido: 150, ben: 130, tomer: 125 });
+  // The real game, balanced without the player missing from the list: Omer's
+  // win takes the missing 125. Nadav lost 250 and left 200 cash, Fouad lost 155 and left 150.
+  const night = entries({ nadav: -250, fouad: -155, yuri: -50, kashkash: -250, omer: 425, ido: 150, ben: 130 });
   const cash = [
     { from: 'nadav', amount: 200 },
     { from: 'fouad', amount: 150 },
@@ -194,7 +194,10 @@ describe('cash paid when settling', () => {
   }
 
   it('the real night: only what is still owed is transferred (unit 1)', () => {
+    // The example adds up on its own (nothing absorbed by the biggest winner).
+    expect(night.reduce((s, e) => s + e.net, 0)).toBe(0);
     const result = settle(night, { unit: 1, cash });
+    expect(result.nets).toEqual(night);
     expectRows(result);
     expect(result.cashPaid).toEqual([
       { from: 'nadav', amount: 200 },

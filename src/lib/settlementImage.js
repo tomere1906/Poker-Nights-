@@ -224,7 +224,7 @@ export function drawSettlement(data, scale = 3) {
     drawName(ctx, nameOf(t.to), PAD + 12 + 2 * r + 8, mid, nameMax, 'left');
 
     // Middle: the amount and the line under it (like the screen).
-    // Plain: yellow amount, "←". All cash: green amount, "← מזומן".
+    // Plain: yellow amount, "←". All cash: 💵 and a green amount, "← מזומן".
     // Mixed: yellow amount, "200 מזומן · 70 העברה" on one line.
     const cx = CARD_WIDTH / 2;
     const amountFont = `800 18px ${FONT}`;
@@ -233,8 +233,14 @@ export function drawSettlement(data, scale = 3) {
     ctx.textBaseline = 'middle';
     ctx.font = amountFont;
     if (parts && !parts.transfer) {
+      // The icon before the amount (on its right, RTL), the pair centered.
+      const amountW = ctx.measureText(formatShekel(t.amount)).width;
+      ctx.font = `400 22px ${FONT}`;
+      const iconW = ctx.measureText('💵').width + 4;
       ctx.fillStyle = COLORS.cash;
-      ctx.fillText(formatShekel(t.amount), cx, mid - 8);
+      ctx.fillText('💵', cx + amountW / 2 + 2, mid - 9);
+      ctx.font = amountFont;
+      ctx.fillText(formatShekel(t.amount), cx - iconW / 2, mid - 8);
       drawPieces(ctx, [['← ', COLORS.muted], ['מזומן', COLORS.cash]], cx, mid + 13, lineFont);
     } else {
       ctx.fillStyle = COLORS.amount;
