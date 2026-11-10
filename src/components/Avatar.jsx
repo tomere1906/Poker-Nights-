@@ -1,24 +1,22 @@
-import { initials } from '../lib/game.js';
+import { EXITS, initials } from '../lib/game.js';
+import { paletteColor, suggestedColor } from '../lib/colors.js';
 
-const COLORS = [
-  'from-rose-300 to-rose-500',
-  'from-amber-200 to-amber-400',
-  'from-sky-300 to-sky-500',
-  'from-violet-300 to-violet-500',
-  'from-emerald-300 to-emerald-500',
-  'from-pink-300 to-pink-500',
-  'from-orange-300 to-orange-500',
-  'from-teal-200 to-teal-400',
-  'from-indigo-300 to-indigo-500',
-  'from-lime-200 to-lime-400',
-];
-
+// The one avatar used everywhere (table seats, sheets, profile, start screen):
+// a circle filled with the player's color and up to 2 initials. A player who
+// left mid-game shows how they left (💀 / 🤝 / 💰) instead of the initials.
 export default function Avatar({ player, size = 'h-12 w-12 text-lg' }) {
+  const color = paletteColor(player.color);
+  const exit = player.out && EXITS[player.out.kind];
   return (
     <div
-      className={`${size} ${COLORS[player.color % COLORS.length]} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br font-extrabold text-slate-900 shadow-lg ring-2 ring-white/80`}
+      className={`${size} ${color.gradient} ${color.text} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br font-extrabold shadow-lg ring-2 ring-white/80`}
     >
-      {initials(player.name)}
+      {exit ? <span aria-label={exit.label}>{exit.icon}</span> : initials(player.name)}
     </div>
   );
+}
+
+// Avatar props for a signed-in user's profile (suggested color until they pick one).
+export function profileAvatar(profile) {
+  return { name: profile.display_name || '?', color: profile.color ?? suggestedColor(profile.id) };
 }

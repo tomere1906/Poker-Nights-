@@ -14,12 +14,20 @@ function position(slot, count) {
 
 const DRAG_THRESHOLD = 8;
 
+function countLabel(players) {
+  const out = players.filter((p) => p.out).length;
+  const playing = players.length - out;
+  if (out === 0) return playing === 1 ? 'שחקן אחד' : `${playing} שחקנים`;
+  return `${playing} משחקים · ${out} יצאו`;
+}
+
 function seatUnder(x, y) {
   const el = document.elementFromPoint(x, y)?.closest('[data-seat]');
   return el ? Number(el.dataset.seat) : null;
 }
 
-export default function PokerTable({ players, started, placing, onPlace, onEmptySeat, onPlayerTap, onMove }) {
+// name: the online table's name (optional), shown above the pot.
+export default function PokerTable({ players, started, name, placing, onPlace, onEmptySeat, onPlayerTap, onMove }) {
   const pointer = useRef(null);
   const [drag, setDrag] = useState(null); // { id, x, y, over }
 
@@ -27,7 +35,9 @@ export default function PokerTable({ players, started, placing, onPlace, onEmpty
   // Setup: fixed seats. Game on: players spread evenly.
   const slots = started ? count : MAX_PLAYERS;
   const taken = new Set(players.map((p) => p.seat));
-  const emptySeats = started ? [] : Array.from({ length: MAX_PLAYERS }, (_, i) => i).filter((i) => !taken.has(i));
+  // Empty seats get a "+" only for people who may seat players (onEmptySeat given).
+  const emptySeats =
+    started || !onEmptySeat ? [] : Array.from({ length: MAX_PLAYERS }, (_, i) => i).filter((i) => !taken.has(i));
   const dragged = drag && players.find((p) => p.id === drag.id);
 
   function dragHandlers(player) {
@@ -38,7 +48,7 @@ export default function PokerTable({ players, started, placing, onPlace, onEmpty
       },
       onPointerMove(e) {
         const p = pointer.current;
-        if (!p) return;
+        if (!p || !onMove) return; // read-only: taps only, no dragging
         if (!p.moving && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD) return;
         p.moving = true;
         setDrag({ id: p.id, x: e.clientX, y: e.clientY, over: seatUnder(e.clientX, e.clientY) });
@@ -84,9 +94,12 @@ export default function PokerTable({ players, started, placing, onPlace, onEmpty
             </p>
           ) : (
             <>
-              <p className="mt-2 text-xs font-medium text-white/70">בקופה</p>
+              {name && (
+                <p className="mt-2 max-w-[80%] truncate text-center text-sm font-extrabold text-amber-100 drop-shadow">{name}</p>
+              )}
+              <p className={`${name ? 'mt-0.5' : 'mt-2'} text-xs font-medium text-white/70`}>בקופה</p>
               <p className="text-2xl font-extrabold text-white drop-shadow">{formatShekel(potTotal(players))}</p>
-              <p className="text-xs text-white/60">{count === 1 ? 'שחקן אחד' : `${count} שחקנים`}</p>
+              <p className="text-xs text-white/60">{countLabel(players)}</p>
             </>
           )}
         </div>

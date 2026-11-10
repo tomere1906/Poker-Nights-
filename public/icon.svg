@@ -1,7 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0b1120"/>
-  <circle cx="256" cy="256" r="190" fill="#e11d48"/>
-  <circle cx="256" cy="256" r="190" fill="none" stroke="#fff" stroke-width="34" stroke-dasharray="60 89.2"/>
-  <circle cx="256" cy="256" r="128" fill="#be123c"/>
-  <path fill="#fff" d="M256 168c-20 34-78 62-78 104 0 26 20 42 42 42 14 0 24-6 30-14-2 20-10 36-22 48h56c-12-12-20-28-22-48 6 8 16 14 30 14 22 0 42-16 42-42 0-42-58-70-78-104z"/>
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="45%" r="50%">
+      <stop offset="0" stop-color="#10b981" stop-opacity=".28" />
+      <stop offset="1" stop-color="#10b981" stop-opacity="0" />
+    </radialGradient>
+    <g id="chip">
+      <circle r="11" fill="currentColor" />
+      <circle r="11" fill="none" stroke="#fff" stroke-width="2.4" stroke-dasharray="3.6 5.04" />
+      <circle r="6.5" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1" />
+    </g>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0b1120" />
+  <circle cx="256" cy="240" r="230" fill="url(#glow)" />
+  <!-- Cards (the app logo, 24-unit art scaled up): red heart behind, black spade in front -->
+  <g transform="translate(86 52) scale(14)">
+    <g transform="rotate(-12 8.5 11.5)">
+      <rect x="3" y="4" width="11" height="15" rx="2" fill="#f8fafc" />
+      <path d="M6.6 11.9c-.2-.15-2.4-1.6-2.4-3.25 0-.8.6-1.45 1.35-1.45.45 0 .8.22 1.05.6.25-.38.6-.6 1.05-.6.75 0 1.35.65 1.35 1.45 0 1.65-2.2 3.1-2.4 3.25z" fill="#e11d48" />
+    </g>
+    <rect x="9" y="5" width="11" height="15" rx="2" transform="rotate(10 14.5 12.5)" fill="#fff" stroke="#e2e8f0" stroke-width=".6" />
+    <path d="M14.6 9.4c-.9 1.4-2.8 2.4-2.8 3.9 0 .9.7 1.5 1.5 1.5.5 0 .9-.2 1.1-.5l-.3 1.5h1.6l-.3-1.5c.2.3.6.5 1.1.5.8 0 1.5-.6 1.5-1.5 0-1.5-1.9-2.5-2.8-3.9z" fill="#0f172a" />
+  </g>
+  <!-- Two chips, bottom corner (as on the start screen) -->
+  <g transform="translate(300 360) scale(4.2)" color="#2563eb"><use href="#chip" /></g>
+  <g transform="translate(360 352) scale(4.2)" color="#e11d48"><use href="#chip" /></g>
 </svg>

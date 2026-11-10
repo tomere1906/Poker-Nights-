@@ -3,8 +3,9 @@ import { useEffect, useRef } from 'react';
 const COLORS = ['#fcd34d', '#34d399', '#f472b6', '#60a5fa', '#f87171', '#a78bfa', '#ffffff'];
 const DURATION = 3000;
 
-// One-shot canvas confetti burst; remove from the tree when done.
-export default function Confetti() {
+// One-shot canvas confetti burst; calls onDone so the parent removes it (a
+// leftover full-screen fixed layer can tint iOS Safari's toolbar).
+export default function Confetti({ onDone }) {
   const canvas = useRef(null);
 
   useEffect(() => {
@@ -50,10 +51,11 @@ export default function Confetti() {
         ctx.restore();
       }
       if (t < DURATION) frame = requestAnimationFrame(draw);
+      else onDone?.();
     }
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [onDone]);
 
   return <canvas ref={canvas} className="pointer-events-none fixed inset-0 z-50 h-full w-full" />;
 }

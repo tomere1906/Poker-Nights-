@@ -1,2 +1,8 @@
 node_modules
 dist
+# Local env (Supabase URL/key for dev). Never commit.
+.env.local
+.env.*.local
+
+# Session tokens for supabase/tests/attack_test.mjs. Never commit.
+.attack-tokens.json
