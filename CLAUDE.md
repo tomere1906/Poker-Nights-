@@ -40,7 +40,7 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - Code, comments, file names and commit messages stay in English.
 
 ## Features
-1. **Start screen**: the app opens here, unless a table was open: a refresh or reopening the home-screen app returns to that table (`src/lib/screen.js`: `?table=<id>` in the URL + `poker-nights-screen` in localStorage). It has two clearly separate sections:
+1. **Start screen**: the app opens here, unless a table was open: a refresh or reopening the home-screen app returns to that table (`src/lib/screen.js`: `?table=<id>` in the URL + `poker-nights-screen` in localStorage). A game saved by the first version (v1: no `tableOpen` in the save) opens straight onto its table (`isLegacyGame`). The app reads the save **as stored** (`loadState({})`, never pre-merged with `initialState`) so `normalizeState` can tell a missing field from "false". It has two clearly separate sections:
    - "🌐 שולחן אונליין עם חברים" (requires Google sign-in): back to the latest open online table, or open a new one.
    - "📱 שולחן מקומי (בלי התחברות)": the phone-only table, exactly as before (stored in localStorage).
    Tapping the logo in a table returns here.

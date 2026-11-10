@@ -141,11 +141,21 @@ export function firstFreeSeat(players) {
   return null;
 }
 
+// A save from the first version (before the start screen): it has players but
+// no `tableOpen`. That game was on screen, so it opens straight away.
+export function isLegacyGame(saved) {
+  return saved?.tableOpen === undefined && Array.isArray(saved?.players) && saved.players.length > 0;
+}
+
 // Repairs saved state from older versions (seat gaps, missing fields).
+// state: the save exactly as stored (never pre-merged with initialState, or an
+// old save's missing fields would look like "false" instead of "missing").
 export function normalizeState(state) {
+  const saved = Array.isArray(state?.players) ? state.players : [];
+  state = { ...state, players: saved };
   // Saves from before `started` existed with players seated were mid-game.
-  const started = state.started ?? state.players.length > 0;
-  const players = started ? compactSeats(state.players) : state.players;
+  const started = state.started ?? saved.length > 0;
+  const players = started ? compactSeats(saved) : saved;
   const finals = state.finals ?? {};
   // Saves from before endMode existed always held chip counts.
   const endMode = state.endMode ?? (Object.keys(finals).length > 0 ? 'chips' : 'net');

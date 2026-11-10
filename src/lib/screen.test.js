@@ -27,6 +27,14 @@ describe('screen memory', () => {
     expect(initialScreen(false)).toEqual({ screen: 'home', tableId: null });
   });
 
+  it('a game saved by the first version opens straight away', () => {
+    fakeBrowser(APP);
+    expect(initialScreen(true, APP, true)).toEqual({ screen: 'game', tableId: null });
+    // Once this version has remembered the home screen, home it is.
+    rememberScreen('home', null);
+    expect(initialScreen(true, APP, false)).toEqual({ screen: 'home', tableId: null });
+  });
+
   it('a refresh at an online table returns to it (URL)', () => {
     fakeBrowser(`${APP}?table=${ID}`);
     expect(initialScreen(false)).toEqual({ screen: 'online', tableId: ID });

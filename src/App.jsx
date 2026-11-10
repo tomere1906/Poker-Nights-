@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { DEFAULT_SETTINGS, cleanSettings, gameReducer, initialState, isAbsent, netOf, normalizeState } from './lib/game.js';
+import { DEFAULT_SETTINGS, cleanSettings, gameReducer, isAbsent, isLegacyGame, netOf, normalizeState } from './lib/game.js';
 import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.js';
 import { useAuth } from './lib/auth.js';
 import { createOnlineTable } from './lib/onlineTable.js';
@@ -24,12 +24,15 @@ import { CardsIcon } from './components/Icons.jsx';
 const THEME_COLOR = '#0b1120';
 
 export default function App() {
-  const [state, dispatch] = useReducer(gameReducer, initialState, (s) => normalizeState(loadState(s)));
+  // The save as stored (no defaults merged in): normalizeState fills in what an
+  // older version didn't have.
+  const [saved] = useState(() => loadState({}));
+  const [state, dispatch] = useReducer(gameReducer, saved, normalizeState);
   // The app opens on the start screen, unless a table was open (refresh or
   // reopening the home-screen app returns to it). The local game lives in
   // `state`; online tables live in Supabase.
   // 'home' | 'profile' | 'stats' | 'setup-local' | 'setup-online' | 'game' (local) | 'online'
-  const [start] = useState(() => initialScreen(state.tableOpen));
+  const [start] = useState(() => initialScreen(state.tableOpen, window.location.href, isLegacyGame(saved)));
   const [screen, setScreen] = useState(start.screen);
   const [onlineTableId, setOnlineTableId] = useState(start.tableId);
   // An invite link opened now (or before a Google sign-in redirect).

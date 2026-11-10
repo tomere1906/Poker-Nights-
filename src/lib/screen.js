@@ -8,7 +8,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HOME = { screen: 'home', tableId: null };
 
 // { screen: 'home' | 'game' | 'online', tableId }
-export function initialScreen(localTableOpen, href = window.location.href) {
+// legacyGame: a game saved by the first version (no start screen then): it was
+// on screen, so it opens straight away.
+export function initialScreen(localTableOpen, href = window.location.href, legacyGame = false) {
   const fromUrl = new URL(href).searchParams.get('table');
   if (fromUrl && UUID.test(fromUrl)) return { screen: 'online', tableId: fromUrl };
 
@@ -20,6 +22,7 @@ export function initialScreen(localTableOpen, href = window.location.href) {
   }
   if (saved?.screen === 'online' && UUID.test(saved.tableId ?? '')) return { screen: 'online', tableId: saved.tableId };
   if (saved?.screen === 'game' && localTableOpen) return { screen: 'game', tableId: null };
+  if (!saved && legacyGame && localTableOpen) return { screen: 'game', tableId: null };
   return HOME;
 }
 

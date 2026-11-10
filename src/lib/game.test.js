@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SETTINGS,
   MAX_PLAYERS,
+  isLegacyGame,
   chipsToShekels,
   cleanChipValue,
   cleanSettings,
@@ -75,6 +76,35 @@ describe('table settings', () => {
     expect(s.tableOpen).toBe(false);
     expect(s.players).toEqual([]);
     expect(s.settings.rebuyAmounts).toEqual([30, 60]);
+  });
+
+  it('keeps a game saved by the first version (v1), exactly as the app loads it', () => {
+    // The exact shape v1 stored in localStorage (poker-night-v1): no tableOpen,
+    // settings or cash; 10-color palette; a game at the end screen in chips mode.
+    const v1 = {
+      players: [
+        { id: 'a', name: 'עידו', seat: 0, color: 9, buyIns: [50, 100], buyInTimes: [1, 2] },
+        { id: 'b', name: 'אור', seat: 1, color: 2, buyIns: [50] },
+      ],
+      view: 'end',
+      started: true,
+      finals: { a: 200, b: 0 },
+      endMode: 'chips',
+    };
+    const s = normalizeState(JSON.parse(JSON.stringify(v1)));
+    expect(s.tableOpen).toBe(true);
+    expect(isLegacyGame(v1)).toBe(true);
+    expect(s.players.map((p) => [p.name, p.color, p.buyIns])).toEqual([
+      ['עידו', 9, [50, 100]],
+      ['אור', 2, [50]],
+    ]);
+    expect(s).toMatchObject({ view: 'end', started: true, finals: { a: 200, b: 0 }, endMode: 'chips', cash: [] });
+    expect(netOf(s, s.players[0])).toBe(50);
+    expect(s.settings).toEqual(DEFAULT_SETTINGS);
+    // Nothing saved yet, or a save from this version: not a legacy game.
+    expect(normalizeState({})).toMatchObject({ players: [], tableOpen: false, started: false, view: 'table' });
+    expect(isLegacyGame({})).toBe(false);
+    expect(isLegacyGame({ ...v1, tableOpen: false })).toBe(false);
   });
 
   it('treats an old save with players as an open table with default settings', () => {
