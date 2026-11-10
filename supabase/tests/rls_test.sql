@@ -9,7 +9,7 @@
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
---         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot
+--         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot; 410+: chip value and "לא כאן"
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -401,6 +401,22 @@ begin
       (398, 'Q removes P''s seat',                                   'Q', $$delete from public.table_players where id = 'b0000000-0000-4000-8000-000000000002'$$, 'rows:1'),
       (399, '…P''s cash goes with it, logged once as the seat removal', 'Q', $$select (select count(*) from public.cash_payments where payer_id = 'b0000000-0000-4000-8000-000000000002') + (select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'cash_removed')$$, 'count:1'),
       (400, 'cash_payments: no update for users, nothing for anon',  'M', $$select count(*) from (values (1)) v(x) where has_table_privilege('authenticated', 'public.cash_payments', 'UPDATE') or has_table_privilege('anon', 'public.cash_payments', 'SELECT') or not has_table_privilege('authenticated', 'public.cash_payments', 'SELECT')$$, 'count:0'),
+
+      -- ---------------- "שווי צ'יפ" (chip value) and "לא כאן" (T2) ----------------
+      -- T2 is open (Q manages it, P is its co-manager, C a plain member who isn't seated; Q's seat is left). T1 has ended.
+      (410, 'Tables start with a chip worth 1 ₪',                    'Q', $$select count(*) from public.poker_tables where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and chip_value = 1$$, 'count:1'),
+      (411, 'The manager (Q) sets a chip to 0.5 ₪',                  'Q', $$update public.poker_tables set chip_value = 0.5 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:1'),
+      (412, 'A co-manager (P) can change it too (0.25 ₪)',           'P', $$update public.poker_tables set chip_value = 0.25 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:1'),
+      (413, 'A chip is worth 0.01 to 1000 ₪',                        'Q', $$update public.poker_tables set chip_value = 0 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'error:23514'),
+      (414, 'A plain member (C) can''t change the chip value',       'C', $$update public.poker_tables set chip_value = 2 where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:0'),
+      (415, 'The chip value is locked after the game ended (T1)',    'M', $$update public.poker_tables set chip_value = 0.5 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$, 'deny'),
+      (416, 'Log: chip value changed twice (Q, then P)',             'C', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'chip_value_changed' and ((actor_id = '44444444-4444-4444-8444-444444444444' and (details ->> 'new')::numeric = 0.5) or (actor_id = '22222222-2222-4222-8222-222222222222' and (details ->> 'new')::numeric = 0.25))$$, 'count:2'),
+      (417, 'Q marks his own seat "לא כאן"',                         'Q', $$update public.table_players set absent = true where id = 'b0000000-0000-4000-8000-000000000001'$$, 'rows:1'),
+      (418, 'A plain member (C) can''t mark anyone',                 'C', $$update public.table_players set absent = false where id = 'b0000000-0000-4000-8000-000000000001'$$, 'rows:0'),
+      (419, 'No "לא כאן" marks after the game ended (T1)',           'M', $$update public.table_players set absent = true where id = 'a0000000-0000-4000-8000-000000000003'$$, 'rows:0'),
+      (420, 'Log: Q was marked "לא כאן"',                            'C', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'presence_changed' and (details ->> 'absent')::boolean$$, 'count:1'),
+      (421, 'A member seating himself can''t set "לא כאן"',          'C', $$insert into public.table_players (table_id, user_id, seat, absent) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '55555555-5555-4555-8555-555555555555', 5, true)$$, 'deny'),
+      (422, '…but can still take his own seat without it',           'C', $$insert into public.table_players (table_id, user_id, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '55555555-5555-4555-8555-555555555555', 5)$$, 'ok'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 8 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments') and rowsecurity$$, 'count:8'),

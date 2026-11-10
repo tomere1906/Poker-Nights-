@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { netOf } from '../lib/game.js';
+import { isAbsent, netOf } from '../lib/game.js';
 import { inviteLink, useOnlineTable } from '../lib/onlineTable.js';
 import InviteSheet, { inviteMessage } from './InviteSheet.jsx';
 import TableScreen from './TableScreen.jsx';
@@ -90,6 +90,9 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
       : view.players.map((p) => ({ id: p.id, net: netOf(view, p) ?? 0 }));
   }, [view]);
 
+  // "לא כאן": cash is handed only to winners who are present.
+  const absent = useMemo(() => (view ? view.players.filter(isAbsent).map((p) => p.id) : []), [view]);
+
   const header = (
     <header className="mb-2 flex items-center gap-2">
       <button type="button" onClick={onHome} aria-label="מסך הבית" className="flex items-center gap-2 rounded-2xl active:scale-95">
@@ -159,6 +162,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         entries={entries}
         rounding={view.settings.rounding}
         cash={view.cash}
+        absent={absent}
         tableName={view.name}
         date={view.endedAt}
         notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
@@ -186,6 +190,8 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         entries={entries}
         rounding={view.settings.rounding}
         cash={view.cash}
+        absent={absent}
+        onAbsentChange={(id, away) => actions.setAbsent(id, away).catch(fail)}
         onRoundingChange={view.isManager ? (unit) => actions.setRounding(unit).catch(fail) : null}
         tableName={view.name}
         onBack={() => setStep('end')}

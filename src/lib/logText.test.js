@@ -41,6 +41,13 @@ describe('describeLog: exits and table names', () => {
     expect(say('rounding_changed', { old: 10, new: 1 }, 'תומר')).toBe('תומר שינה: בלי עיגול (לשקל)');
   });
 
+  it('describes "לא כאן" marks and chip value changes', () => {
+    expect(say('presence_changed', { name: 'תומר', absent: true }, 'אסף')).toBe('אסף סימן שתומר לא כאן');
+    expect(say('presence_changed', { name: 'תומר', absent: false }, 'אסף')).toBe('אסף סימן שתומר כאן');
+    expect(say('chip_value_changed', { old: 1, new: 0.5 }, 'תומר')).toContain('שווי הצ׳יפ');
+    expect(say('chip_value_changed', { old: 1, new: 0.5 }, 'תומר')).toContain('0.5');
+  });
+
   it('describes cash paid during the night', () => {
     expect(say('cash_added', { name: 'נדב', amount: 200 }, 'תומר')).toBe('תומר רשם שנדב שילם 200 ₪ במזומן 💵');
     expect(say('cash_removed', { name: 'נדב', amount: 200 }, 'תומר')).toBe('תומר מחק מזומן של 200 ₪ של נדב');

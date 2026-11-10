@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CASH_ICON, cashParts, settle } from '../lib/settlement.js';
+import { cashParts, settle } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
@@ -22,9 +22,11 @@ export function NewGameButton({ onNewGame }) {
   );
 }
 
+const NONE = [];
+
 // The middle of a row: the amount and the arrow line under it.
 // - plain transfer: yellow amount, "←".
-// - all cash: green amount (with 💵 when CASH_ICON), "← מזומן" in green.
+// - all cash: green amount, "← מזומן" in green.
 // - mixed: the usual yellow amount (only part of it is cash), and one line
 //   "200 מזומן · 70 העברה" (cash green, transfer gray) that never wraps.
 function RowAmount({ row }) {
@@ -47,14 +49,7 @@ function RowAmount({ row }) {
   }
   return (
     <div className="flex shrink-0 flex-col items-center px-1">
-      <span className="flex items-center gap-1 whitespace-nowrap text-lg font-extrabold text-emerald-300">
-        {CASH_ICON && (
-          <span className="text-2xl leading-none" aria-hidden>
-            💵
-          </span>
-        )}
-        {formatShekel(row.amount)}
-      </span>
+      <span className="whitespace-nowrap text-lg font-extrabold text-emerald-300">{formatShekel(row.amount)}</span>
       <span className="text-sm font-bold leading-tight">
         <span className="text-slate-400">← </span>
         <span className="text-emerald-300">מזומן</span>
@@ -69,12 +64,17 @@ function RowAmount({ row }) {
 // it depends on the night's amounts). cash: [{ from, amount }] paid in cash
 // when settling: one list of rows, each with a small "💵 מזומן" or
 // "200 מזומן · 70 העברה" note; only the rest is transferred.
+// absent: ids of players who are "לא כאן" (cash goes only to winners who are
+// present; an absent winner gets a transfer). onAbsentChange(id, absent): shows
+// the "מי לא כאן?" toggles (managers, before the game is closed).
 // children: extra buttons under "share".
 export default function Settlement({
   players,
   entries,
   rounding = 1,
-  cash = [],
+  cash = NONE,
+  absent = NONE,
+  onAbsentChange = null,
   onRoundingChange = null,
   tableName = null,
   date = null,
@@ -89,7 +89,8 @@ export default function Settlement({
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
-  const { nets, transfers } = useMemo(() => settle(entries, { unit: rounding, cash }), [entries, rounding, cash]);
+  const { nets, transfers } = useMemo(() => settle(entries, { unit: rounding, cash, absent }), [entries, rounding, cash, absent]);
+  const away = new Set(absent);
   // The header: table name and date only.
   const details = [tableName, formatDate(when)].filter(Boolean).join(' · ');
 
@@ -144,6 +145,29 @@ export default function Settlement({
         <div className="mb-4 rounded-3xl bg-slate-800/70 p-3 ring-1 ring-white/5">
           <p className="mb-2 text-sm font-medium text-slate-400">עיגול סכומים</p>
           <RoundingPicker value={rounding} onChange={onRoundingChange} />
+        </div>
+      )}
+
+      {onAbsentChange && (
+        <div className="mb-4 rounded-3xl bg-slate-800/70 p-3 ring-1 ring-white/5">
+          <p className="text-sm font-medium text-slate-400">מי לא כאן?</p>
+          <p className="mb-2 text-xs text-slate-500">מזומן עובר רק למי שנמצא. מי שלא כאן יקבל העברה</p>
+          <div className="flex flex-wrap gap-2">
+            {players.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={away.has(p.id)}
+                onClick={() => onAbsentChange(p.id, !away.has(p.id))}
+                className={`flex max-w-full items-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-bold transition active:scale-95 ${
+                  away.has(p.id) ? 'bg-rose-400/15 text-rose-200 ring-1 ring-rose-400/40' : 'bg-slate-950/40 text-slate-300'
+                }`}
+              >
+                <PlayerName name={p.name} />
+                {away.has(p.id) && <span className="shrink-0 text-xs">🚪 לא כאן</span>}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

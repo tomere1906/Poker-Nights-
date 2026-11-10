@@ -6,6 +6,16 @@ export function formatShekel(amount, { signed = false } = {}) {
   return `\u2066${sign}${Math.abs(n).toLocaleString('he-IL')}\u2069\u00a0₪`;
 }
 
+// A plain number with ₪, decimals kept (a chip value like 0.5 ₪).
+export function formatChipValue(value) {
+  return `⁦${value}⁩ ₪`;
+}
+
+// "1,500" (a chip count).
+export function formatCount(n) {
+  return `⁦${Math.round(n).toLocaleString('he-IL')}⁩`;
+}
+
 // "20:14" (24-hour), or a dash when the time wasn't recorded.
 export function formatTime(ms) {
   if (ms == null) return '—';

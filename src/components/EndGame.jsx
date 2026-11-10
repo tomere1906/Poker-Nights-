@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { EXITS, netOf, potTotal, totalIn } from '../lib/game.js';
-import { formatShekel, parseAmount } from '../lib/format.js';
+import { DEFAULT_CHIP_VALUE, EXITS, chipsToShekels, netOf, potTotal, shekelsToChips, totalIn } from '../lib/game.js';
+import { formatChipValue, formatCount, formatShekel, parseAmount } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
 import CashForm from './CashForm.jsx';
@@ -94,7 +94,7 @@ const MODES = [
   { id: 'chips', label: 'צ׳יפים בסוף' },
 ];
 
-function AmountField({ value, onChange, placeholder, inputRef, enterKeyHint }) {
+function AmountField({ value, onChange, placeholder, inputRef, enterKeyHint, suffix = '₪' }) {
   return (
     <div className="relative w-24">
       <input
@@ -107,7 +107,7 @@ function AmountField({ value, onChange, placeholder, inputRef, enterKeyHint }) {
         placeholder={placeholder}
         className="w-full rounded-2xl bg-slate-950/60 px-3 py-3 pe-7 text-lg font-bold outline-none ring-2 ring-transparent placeholder:text-sm placeholder:font-normal placeholder:text-slate-500 focus:ring-emerald-400"
       />
-      <span className="pointer-events-none absolute inset-y-0 end-2.5 flex items-center text-slate-400">₪</span>
+      <span className="pointer-events-none absolute inset-y-0 end-2.5 flex items-center text-slate-400">{suffix}</span>
     </div>
   );
 }
@@ -115,6 +115,12 @@ function AmountField({ value, onChange, placeholder, inputRef, enterKeyHint }) {
 export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAddCash, onRemoveCash }) {
   const { players, finals, endMode } = state;
   const cash = state.cash ?? [];
+  // "שווי צ'יפ": when a chip isn't worth 1 ₪, the chips mode takes chip counts
+  // and converts them to ₪ (finals always hold ₪).
+  const chipValue = state.settings?.chipValue ?? DEFAULT_CHIP_VALUE;
+  const counting = endMode === 'chips' && chipValue !== DEFAULT_CHIP_VALUE;
+  // The chip count as typed (the stored ₪ are rounded, so it can't always be derived).
+  const [chipDrafts, setChipDrafts] = useState({});
   // In net mode, a typed amount waits here until a +/− is chosen.
   const [signs, setSigns] = useState({});
   const [drafts, setDrafts] = useState({});
@@ -167,6 +173,21 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
 
   const parse = (text) => (text.trim() === '' ? null : parseAmount(text));
 
+  // The chip count shown in the field: what was typed while it still matches
+  // the stored amount, otherwise worked back from the ₪.
+  function chipCount(id) {
+    if (!(id in finals)) return null;
+    const draft = chipDrafts[id];
+    if (draft !== undefined && chipsToShekels(draft, chipValue) === finals[id]) return draft;
+    return shekelsToChips(finals[id], chipValue);
+  }
+
+  function setChips(id, text) {
+    const count = parse(text);
+    setChipDrafts((d) => ({ ...d, [id]: count ?? undefined }));
+    onFinal(id, count === null ? null : chipsToShekels(count, chipValue));
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="mb-4 flex items-center gap-3">
@@ -196,7 +217,11 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
         ))}
       </div>
       <p className="mb-3 text-sm text-slate-400">
-        {endMode === 'net' ? 'כמה כל אחד הרוויח או הפסיד? בחר + או − ורשום סכום' : 'עם כמה צ׳יפים כל אחד יצא?'}
+        {endMode === 'net'
+          ? 'כמה כל אחד הרוויח או הפסיד? בחר + או − ורשום סכום'
+          : counting
+            ? `כמה צ׳יפים נשארו לכל אחד? צ׳יפ שווה ${formatChipValue(chipValue)}, ההמרה לשקלים אוטומטית`
+            : 'עם כמה צ׳יפים כל אחד יצא?'}
       </p>
 
       <ul className="space-y-2">
@@ -215,6 +240,11 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
                     <span>בפנים {formatShekel(totalIn(p))}</span>
                     {net !== null && <NetBadge net={net} />}
                     {needsSign && <span className="font-bold text-amber-300">+ או −?</span>}
+                    {counting && p.id in finals && (
+                      <span className="font-bold text-slate-200">
+                        {formatCount(chipCount(p.id))} צ׳יפים = {formatShekel(finals[p.id])}
+                      </span>
+                    )}
                     {cash.some((c) => c.from === p.id) && (
                       <span className="text-amber-200">
                         💵 שילם {formatShekel(cash.filter((c) => c.from === p.id).reduce((s, c) => s + c.amount, 0))}
@@ -258,9 +288,10 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
                 ) : (
                   <AmountField
                     enterKeyHint={enterKeyHint}
-                    value={p.id in finals ? String(finals[p.id]) : ''}
-                    onChange={(text) => onFinal(p.id, parse(text))}
-                    placeholder="יוצא עם"
+                    value={p.id in finals ? String(counting ? chipCount(p.id) : finals[p.id]) : ''}
+                    onChange={(text) => (counting ? setChips(p.id, text) : onFinal(p.id, parse(text)))}
+                    placeholder={counting ? 'צ׳יפים' : 'יוצא עם'}
+                    suffix={counting ? '' : '₪'}
                   />
                 )}
               </div>

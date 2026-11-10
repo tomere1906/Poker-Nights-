@@ -239,6 +239,70 @@ describe('cash paid when settling', () => {
     expect(cashParts(result.transfers[0])).toEqual({ cash: 200, transfer: 70 });
   });
 
+  it('cash goes only to winners who are present; an absent winner gets a transfer', () => {
+    // Ido pays 150 cash. Tomer is owed exactly 150 but left early.
+    const nets = entries({ ido: -150, yuri: -200, tomer: 150, omer: 200 });
+    const cash = [{ from: 'ido', amount: 150 }];
+    // Everyone here: the bill goes to the exact match (Tomer).
+    expect(settle(nets, { cash }).transfers.find((r) => r.cash > 0)).toEqual({ from: 'ido', to: 'tomer', amount: 150, cash: 150 });
+    // Tomer isn't here: the 150 goes whole to Omer, and Tomer is paid by transfer.
+    const result = settle(nets, { cash, absent: ['tomer'] });
+    expectRows(result);
+    expect(result.transfers).toEqual([
+      { from: 'yuri', to: 'tomer', amount: 150, cash: 0 },
+      { from: 'yuri', to: 'omer', amount: 50, cash: 0 },
+      { from: 'ido', to: 'omer', amount: 150, cash: 150 },
+    ]);
+  });
+
+  it('the cash of a loser who left also goes to a winner who is present', () => {
+    const result = settle(entries({ ido: -200, ben: -100, tomer: 200, omer: 100 }), {
+      cash: [{ from: 'ido', amount: 100 }],
+      absent: ['ido', 'omer'],
+    });
+    expectRows(result);
+    expect(result.transfers.filter((r) => r.cash > 0)).toEqual([{ from: 'ido', to: 'tomer', amount: 200, cash: 100 }]);
+  });
+
+  it('absent marks change nothing when there is no cash', () => {
+    const nets = entries({ a: -300, b: -50, c: 200, d: 150 });
+    expect(settle(nets, { absent: ['c', 'd'] })).toEqual(settle(nets));
+  });
+
+  it('a bill bigger than every present winner is split among them first', () => {
+    // 200 bill; the present winner is owed 100, the absent one 300.
+    const result = settle(entries({ a: -400, here: 100, away: 300 }), { cash: [{ from: 'a', amount: 200 }], absent: ['away'] });
+    expectRows(result);
+    expect(result.transfers.find((r) => r.to === 'here')).toEqual({ from: 'a', to: 'here', amount: 100, cash: 100 });
+  });
+
+  it('when every winner is absent the cash still settles', () => {
+    const result = settle(entries({ a: -200, b: 200 }), { cash: [{ from: 'a', amount: 200 }], absent: ['b'] });
+    expectRows(result);
+    expect(result.transfers).toEqual([{ from: 'a', to: 'b', amount: 200, cash: 200 }]);
+  });
+
+  it('random nights with cash and absent players always settle', () => {
+    let seed = 7;
+    const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let round = 0; round < 60; round++) {
+      const n = 3 + Math.floor(rand() * 5);
+      const nets = Array.from({ length: n - 1 }, () => Math.round((rand() - 0.5) * 80) * 10);
+      nets.push(-nets.reduce((s, x) => s + x, 0));
+      const list = nets.map((net, i) => ({ id: 'p' + i, net }));
+      const cash = list
+        .filter((e) => e.net < 0 && rand() < 0.6)
+        .map((e) => ({ from: e.id, amount: Math.min(-e.net, [50, 100, 200][Math.floor(rand() * 3)]) }));
+      const absent = list.filter(() => rand() < 0.35).map((e) => e.id);
+      const result = settle(list, { unit: 10, cash, absent });
+      expectRows(result);
+      // One bill and a present winner who can take it whole: it never goes to an absent one.
+      if (cash.length === 1 && result.nets.some((e) => !absent.includes(e.id) && e.net >= cash[0].amount)) {
+        expect(result.transfers.filter((r) => absent.includes(r.to)).every((r) => r.cash === 0)).toBe(true);
+      }
+    }
+  });
+
   it('two 50 bills can go to two different winners', () => {
     const result = settle(entries({ a: -100, b: 50, c: 50 }), {
       cash: [

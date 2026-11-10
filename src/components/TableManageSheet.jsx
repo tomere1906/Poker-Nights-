@@ -2,6 +2,7 @@ import { useState } from 'react';
 import BottomSheet from './BottomSheet.jsx';
 import Avatar from './Avatar.jsx';
 import RoundingPicker from './RoundingPicker.jsx';
+import ChipValuePicker from './ChipValuePicker.jsx';
 import { AmountsForm } from './AmountsEditor.jsx';
 import { formatShekel } from '../lib/format.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
@@ -11,7 +12,7 @@ const MODES = [
   { id: 'self_add', title: 'כל אחד את שלו', hint: 'כל שחקן יכול גם להוסיף כניסות לעצמו. תיקונים רק אצל המנהלים' },
 ];
 
-// Table management: name, buy-in amounts (managers + co-managers, mid-game too), rounding, buy-in mode and co-managers (manager only), delete table.
+// Table management: name, buy-in amounts and chip value (managers + co-managers, mid-game too), rounding, buy-in mode and co-managers (manager only), delete table.
 // Co-managers and players see the same information, read-only.
 export default function TableManageSheet({ view, actions, onDeleted, onClose, onError }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -87,6 +88,17 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
             onChange={(unit) => run(() => actions.setRounding(unit))}
           />
           {!isManager && <p className="mt-2 text-xs text-slate-500">רק מנהל השולחן משנה את זה</p>}
+        </section>
+
+        <section>
+          <p className="text-sm text-slate-400">שווי צ׳יפ</p>
+          <p className="mb-2 text-xs text-slate-500">כמה שקלים שווה כל צ׳יפ בספירה בסוף. הכניסות נשארות בשקלים</p>
+          <ChipValuePicker
+            key={view.settings.chipValue}
+            value={view.settings.chipValue}
+            disabled={!view.canManage || view.ended}
+            onChange={(value) => run(() => actions.setChipValue(value))}
+          />
         </section>
 
         <section>

@@ -189,6 +189,7 @@ export default function TableScreen({
           players={players}
           cashLeft={cash.filter((c) => c.from === activePlayer.id)}
           rebuyAmounts={settings.rebuyAmounts}
+          chipValue={settings.chipValue}
           canManage={canManage}
           canSelfAdd={canSelfAdd(activePlayer)}
           onClose={close}

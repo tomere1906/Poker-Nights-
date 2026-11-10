@@ -3,6 +3,7 @@ import { cleanSettings } from '../lib/game.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
 import AmountsEditor, { amountsValid } from './AmountsEditor.jsx';
 import RoundingPicker from './RoundingPicker.jsx';
+import ChipValuePicker from './ChipValuePicker.jsx';
 
 function Card({ title, hint, children }) {
   return (
@@ -27,6 +28,7 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
   const [buyInMode, setBuyInMode] = useState('managers');
   const [name, setName] = useState('');
   const [rounding, setRounding] = useState(defaults.rounding);
+  const [chipValue, setChipValue] = useState(defaults.chipValue);
   const [busy, setBusy] = useState(false);
 
   const valid = amountsValid(initialBuyIn, amounts);
@@ -70,6 +72,10 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           <RoundingPicker value={rounding} onChange={setRounding} />
         </Card>
 
+        <Card title="שווי צ׳יפ" hint="כמה שקלים שווה כל צ׳יפ. בסוף סופרים צ׳יפים וההמרה לשקלים אוטומטית; הכניסות נשארות בשקלים">
+          <ChipValuePicker value={chipValue} onChange={setChipValue} />
+        </Card>
+
         {online && (
           <Card title="מי מוסיף כניסות?" hint="אפשר לשנות גם אחר כך, בניהול השולחן">
             <div className="space-y-2">
@@ -102,7 +108,7 @@ export default function TableSetup({ defaults, online = false, onBack, onOpen })
           onClick={async () => {
             setBusy(true);
             try {
-              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts, rounding }), buyInMode, cleanTableName(name));
+              await onOpen(cleanSettings({ initialBuyIn, rebuyAmounts: amounts, rounding, chipValue }), buyInMode, cleanTableName(name));
             } finally {
               setBusy(false);
             }

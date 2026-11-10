@@ -9,9 +9,38 @@ export const AVATAR_COLORS = 12; // = PALETTE.length in src/lib/colors.js
 export const MIN_REBUY_BUTTONS = 2;
 export const MAX_REBUY_BUTTONS = 4;
 
+// "שווי צ'יפ": how many ₪ one chip is worth (e.g. 0.5). Buy-ins stay in ₪; only
+// the chip counts typed at the end are converted.
+export const DEFAULT_CHIP_VALUE = 1;
+export const CHIP_VALUES = [1, 0.5, 0.25, 0.1];
+export const MIN_CHIP_VALUE = 0.01;
+export const MAX_CHIP_VALUE = 1000;
+
+// A valid chip value (two decimals at most), or the default.
+export function cleanChipValue(value) {
+  const n = Math.round(Number(value) * 100) / 100;
+  return n >= MIN_CHIP_VALUE && n <= MAX_CHIP_VALUE ? n : DEFAULT_CHIP_VALUE;
+}
+
+// Chips counted at the end -> whole shekels (1,500 chips × 0.5 = 750 ₪).
+export function chipsToShekels(chips, chipValue = DEFAULT_CHIP_VALUE) {
+  return Math.round(chips * chipValue);
+}
+
+// The chip count behind an amount in ₪ (for showing both numbers).
+export function shekelsToChips(amount, chipValue = DEFAULT_CHIP_VALUE) {
+  return Math.round(amount / chipValue);
+}
+
 // Table settings chosen by the table manager when opening a table.
 // rounding: "עיגול סכומים", results are rounded to a multiple of it (1 / 5 / 10 / 50 ₪).
-export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200], rounding: DEFAULT_ROUNDING };
+// chipValue: "שווי צ'יפ" in ₪.
+export const DEFAULT_SETTINGS = {
+  initialBuyIn: 50,
+  rebuyAmounts: [50, 100, 200],
+  rounding: DEFAULT_ROUNDING,
+  chipValue: DEFAULT_CHIP_VALUE,
+};
 
 // The whole state is one table. With a backend later this maps onto a
 // `tables` row (settings, status) plus `players` and `buy_ins` rows.
@@ -19,7 +48,8 @@ export const DEFAULT_SETTINGS = { initialBuyIn: 50, rebuyAmounts: [50, 100, 200]
 // view: 'table' | 'end' | 'settle'.
 // started: false during seating, true once the game is on.
 // endMode: 'net' -> finals hold each player's signed profit/loss;
-//          'chips' -> finals hold the chips each player left with.
+//          'chips' -> finals hold what each player left with, in ₪ (chip
+//          counts are converted with settings.chipValue when typed).
 // cash: cash paid into the night's pot when settling (leaving or at the end),
 //       [{ id, from, amount }]: the pot is split among winners, only the rest is transferred.
 export const initialState = {
@@ -42,7 +72,12 @@ export function cleanSettings(settings) {
   const amounts = [...new Set((settings?.rebuyAmounts ?? []).filter(positiveInt))].sort((a, b) => a - b);
   const rebuyAmounts =
     amounts.length >= MIN_REBUY_BUTTONS ? amounts.slice(0, MAX_REBUY_BUTTONS) : DEFAULT_SETTINGS.rebuyAmounts;
-  return { initialBuyIn, rebuyAmounts, rounding: cleanRounding(settings?.rounding) };
+  return {
+    initialBuyIn,
+    rebuyAmounts,
+    rounding: cleanRounding(settings?.rounding),
+    chipValue: cleanChipValue(settings?.chipValue ?? DEFAULT_CHIP_VALUE),
+  };
 }
 
 // How a player left mid-game. The same labels and icons as the quick results on
@@ -58,6 +93,12 @@ export function exitChips(player, kind, amount = 0) {
   if (kind === 'lost_all') return 0;
   if (kind === 'even') return totalIn(player);
   return amount;
+}
+
+// "לא כאן" on the settlement screen: marked by hand (player.absent true/false),
+// otherwise anyone who left mid-game. Cash is handed only to those present.
+export function isAbsent(player) {
+  return player.absent ?? Boolean(player.out);
 }
 
 export function totalIn(player) {
@@ -209,6 +250,12 @@ export function gameReducer(state, action) {
     }
     case 'removeCash':
       return { ...state, cash: state.cash.filter((c) => c.id !== action.id) };
+    case 'setAbsent':
+      // "לא כאן" / "כאן" on the settlement screen (overrides the automatic mark of an exit).
+      return {
+        ...state,
+        players: state.players.map((p) => (p.id === action.id ? { ...p, absent: Boolean(action.absent) } : p)),
+      };
     case 'startGame':
       return { ...state, started: true, players: compactSeats(state.players) };
     case 'moveSeat': {
@@ -249,10 +296,15 @@ export function gameReducer(state, action) {
         ...state,
         settings: cleanSettings({ ...state.settings, initialBuyIn: action.initialBuyIn, rebuyAmounts: action.rebuyAmounts }),
       };
+    case 'setChipValue':
+      return { ...state, settings: { ...state.settings, chipValue: cleanChipValue(action.value) } };
     case 'setView':
       return { ...state, view: action.view };
-    case 'openTable':
-      return { ...initialState, tableOpen: true, settings: cleanSettings(action.settings) };
+    case 'openTable': {
+      // Chips that aren't worth 1 ₪ are counted at the end: start in chips mode.
+      const settings = cleanSettings(action.settings);
+      return { ...initialState, tableOpen: true, settings, endMode: settings.chipValue === DEFAULT_CHIP_VALUE ? 'net' : 'chips' };
+    }
     case 'newGame':
       // Back to the start screen; keep the settings for the next table.
       return { ...initialState, settings: state.settings };

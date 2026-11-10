@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { EXITS, timesOf, totalIn } from '../lib/game.js';
+import { DEFAULT_CHIP_VALUE, EXITS, chipsToShekels, timesOf, totalIn } from '../lib/game.js';
 import { formatShekel, formatTime } from '../lib/format.js';
 import { PALETTE } from '../lib/colors.js';
 import BottomSheet from './BottomSheet.jsx';
@@ -69,9 +69,12 @@ const EXIT_BUTTON =
   'flex w-full items-center gap-3 rounded-2xl bg-slate-950/50 p-3 text-start font-bold ring-1 ring-white/10 transition active:scale-[0.98]';
 
 // "יצא מהמשחק": lost everything, left even, or left with a typed amount.
-function ExitPicker({ player, onPick }) {
+// When a chip isn't worth 1 ₪, the typed amount is a chip count, converted to ₪.
+function ExitPicker({ player, chipValue, onPick }) {
   const [typing, setTyping] = useState(false);
   const [amount, setAmount] = useState(0);
+  const counting = chipValue !== DEFAULT_CHIP_VALUE;
+  const shekels = counting ? chipsToShekels(amount, chipValue) : amount;
   return (
     <div className="animate-fade-in mb-5 space-y-2 rounded-2xl bg-slate-800/70 p-3">
       <p className="text-sm text-slate-400">איך {player.name} יצא? הסכום יופיע במסך סיום המשחק</p>
@@ -90,11 +93,18 @@ function ExitPicker({ player, onPick }) {
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            onPick('amount', amount);
+            onPick('amount', shekels);
           }}
         >
           <div className="flex-1">
-            <AmountInput value={amount} onChange={setAmount} placeholder="יצא עם" autoFocus />
+            <AmountInput
+              value={amount}
+              onChange={setAmount}
+              placeholder={counting ? 'כמה צ׳יפים' : 'יצא עם'}
+              suffix={counting ? '' : '₪'}
+              autoFocus
+            />
+            {counting && amount > 0 && <p className="mt-1 text-sm text-slate-400">= {formatShekel(shekels)}</p>}
           </div>
           <button type="submit" className="rounded-2xl bg-emerald-400 px-5 font-bold text-slate-900 active:scale-95">
             אישור
@@ -135,6 +145,7 @@ export default function PlayerSheet({
   players = [],
   cashLeft = [],
   rebuyAmounts,
+  chipValue = DEFAULT_CHIP_VALUE,
   canManage = true,
   canSelfAdd = false,
   onBuyIn,
@@ -225,6 +236,7 @@ export default function PlayerSheet({
       {pickingExit && !exit && (
         <ExitPicker
           player={player}
+          chipValue={chipValue}
           onPick={(kind, amount) => {
             setPickingExit(false);
             const loss = totalIn(player) - (kind === 'lost_all' ? 0 : kind === 'amount' ? amount : totalIn(player));

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { DEFAULT_SETTINGS, cleanSettings, gameReducer, initialState, netOf, normalizeState } from './lib/game.js';
+import { DEFAULT_SETTINGS, cleanSettings, gameReducer, initialState, isAbsent, netOf, normalizeState } from './lib/game.js';
 import { loadSettings, loadState, saveSettings, saveState } from './lib/storage.js';
 import { useAuth } from './lib/auth.js';
 import { createOnlineTable } from './lib/onlineTable.js';
@@ -72,6 +72,8 @@ export default function App() {
   const setView = (view) => dispatch({ type: 'setView', view });
   const { players, view, started, settings } = state;
   const localNets = useMemo(() => players.map((p) => ({ id: p.id, net: netOf(state, p) ?? 0 })), [state]);
+  // "לא כאן": cash is handed only to winners who are present.
+  const localAbsent = useMemo(() => players.filter(isAbsent).map((p) => p.id), [players]);
   const goHome = () => setScreen('home');
   const openOnline = (id) => {
     setOnlineTableId(id);
@@ -232,6 +234,8 @@ export default function App() {
           entries={localNets}
           rounding={settings.rounding}
           cash={state.cash}
+          absent={localAbsent}
+          onAbsentChange={(id, absent) => dispatch({ type: 'setAbsent', id, absent })}
           onRoundingChange={(unit) => dispatch({ type: 'setRounding', unit })}
           onBack={() => setView('end')}
         >
@@ -248,6 +252,7 @@ export default function App() {
         <LocalSettingsSheet
           settings={settings}
           onRounding={(unit) => dispatch({ type: 'setRounding', unit })}
+          onChipValue={(value) => dispatch({ type: 'setChipValue', value })}
           onAmounts={(amounts) => {
             dispatch({ type: 'setAmounts', ...amounts });
             showToast('הסכומים עודכנו');

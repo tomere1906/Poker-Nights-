@@ -269,9 +269,6 @@ export function cashRoom(net, cash, playerId) {
   return Math.max(0, -(net ?? 0) - paid);
 }
 
-// Show a 💵 before the green amount of an all-cash row (else the green alone).
-export const CASH_ICON = true;
-
 // How a row was paid, for its display: null for a plain transfer, else
 // { cash, transfer } (transfer 0 = all cash). All cash: a green amount and
 // "← מזומן" under it; mixed: the usual amount and "200 מזומן · 70 העברה" under it.
@@ -340,9 +337,13 @@ function mergeRows(cashRows, transfers) {
 // combinations (exact matches first) and keeps the one with the fewest small
 // transfers, then the fewest rows, then the fewest transfers. Returns rows
 // [{ from, to, amount, cash }], or null when the bills can't all be placed.
-function placeBills(nets, bills, unit) {
+// absent: Set of ids who are "לא כאן". Cash goes only to winners who are
+// present; an absent winner is paid by transfer. Only a bill that fits no
+// present winner goes to an absent one (the least cash possible).
+function placeBills(nets, bills, unit, absent) {
   const winners = nets.filter((e) => e.net > 0);
-  const units = splitUnfitBills(bills, winners).sort((x, y) => y.amount - x.amount);
+  const present = winners.filter((w) => !absent.has(w.id));
+  const units = splitUnfitBills(bills, present.length ? present : winners).sort((x, y) => y.amount - x.amount);
   const owed = new Map(winners.map((w) => [w.id, w.net]));
   const placed = [];
   let best = null;
@@ -357,7 +358,8 @@ function placeBills(nets, bills, unit) {
     const free = new Set(placed.map((p) => p.from + '>' + p.to));
     const transfers = planTransfers([...balance].map(([id, net]) => ({ id, net })), unit, free);
     const rows = mergeRows(placed, transfers);
-    const score = [transfers.filter((t) => t.amount < MIN_TRANSFER).length, rows.length, transfers.length];
+    const away = placed.reduce((sum, p) => sum + (absent.has(p.to) ? p.amount : 0), 0);
+    const score = [away, transfers.filter((t) => t.amount < MIN_TRANSFER).length, rows.length, transfers.length];
     if (!best || lexLess(score, best.score)) best = { score, rows };
   }
 
@@ -369,10 +371,11 @@ function placeBills(nets, bills, unit) {
       return;
     }
     const bill = units[k];
-    const options = [...owed]
+    const fits = [...owed]
       .filter(([, claim]) => claim >= bill.amount)
       .sort(([, x], [, y]) => (y === bill.amount) - (x === bill.amount) || y - x);
-    for (const [id, claim] of options) {
+    const here = fits.filter(([id]) => !absent.has(id));
+    for (const [id, claim] of here.length ? here : fits) {
       owed.set(id, claim - bill.amount);
       placed.push({ from: bill.from, to: id, amount: bill.amount });
       place(k + 1);
@@ -414,13 +417,19 @@ function markCash(rows, paid) {
 // night's results), the cash paid per player (cashPaid [{ from, amount }]) and
 // one list of rows [{ from, to, amount, cash }]: payer → receiver, `cash` of
 // the amount paid in cash (0 = all by transfer); the fewest rows.
-export function settle(entries, { unit = 1, cash = [] } = {}) {
+// absent: ids of players who are "לא כאן" (left early): cash is handed only to
+// winners who are present, so an absent winner gets a transfer instead.
+export function settle(entries, { unit = 1, cash = [], absent = [] } = {}) {
   const nets = roundNets(entries, unit);
   const bills = capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets);
   const cashPaid = cashByPayer(bills);
   if (bills.length === 0) return { nets, cashPaid, transfers: planTransfers(nets, unit).map((t) => ({ ...t, cash: 0 })) };
   const loss = new Map(nets.map((e) => [e.id, e.net]));
-  const rows = placeBills(nets, bills, unit) ?? markCash(planTransfers(nets, unit), cashPaid);
+  const away = new Set(absent);
+  const rows =
+    placeBills(nets, bills, unit, away) ??
+    (away.size ? placeBills(nets, bills, unit, new Set()) : null) ??
+    markCash(planTransfers(nets, unit), cashPaid);
   // Group by payer (biggest loser first), biggest row first.
   return { nets, cashPaid, transfers: rows.sort((x, y) => loss.get(x.from) - loss.get(y.from) || y.amount - x.amount) };
 }

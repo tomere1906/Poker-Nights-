@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, MAX_PLAYERS, cleanSettings, gameReducer, initialState, initials, netOf, normalizeState, potTotal, timesOf, totalIn } from './game.js';
+import {
+  DEFAULT_SETTINGS,
+  MAX_PLAYERS,
+  chipsToShekels,
+  cleanChipValue,
+  cleanSettings,
+  gameReducer,
+  initialState,
+  initials,
+  isAbsent,
+  netOf,
+  normalizeState,
+  potTotal,
+  shekelsToChips,
+  timesOf,
+  totalIn,
+} from './game.js';
 
 function add(state, name, position = state.players.length, amount = 100) {
   return gameReducer(state, { type: 'addPlayer', position, name, amount });
@@ -16,7 +32,7 @@ describe('table settings', () => {
     s = gameReducer(s, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [60, 30, 100] } });
     expect(s.tableOpen).toBe(true);
     expect(s.players).toEqual([]);
-    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100], rounding: 10 });
+    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60, 100], rounding: 10, chipValue: 1 });
   });
 
   it('cleans settings: 2-4 distinct positive buttons, else defaults', () => {
@@ -24,6 +40,7 @@ describe('table settings', () => {
       initialBuyIn: 40,
       rebuyAmounts: [50, 100],
       rounding: 10,
+      chipValue: 1,
     });
     // Rounding: 1 / 5 / 10 / 50 ₪, default 10 (also for saves from before the setting).
     expect(cleanSettings({ initialBuyIn: 40, rebuyAmounts: [50, 100], rounding: 50 }).rounding).toBe(50);
@@ -36,7 +53,7 @@ describe('table settings', () => {
   it('changes the rounding of the open table only', () => {
     let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 30, rebuyAmounts: [30, 60] } });
     s = gameReducer(seat(s, 'א'), { type: 'setRounding', unit: 50 });
-    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60], rounding: 50 });
+    expect(s.settings).toEqual({ initialBuyIn: 30, rebuyAmounts: [30, 60], rounding: 50, chipValue: 1 });
     expect(s.players).toHaveLength(1);
     expect(gameReducer(s, { type: 'setRounding', unit: 3 }).settings.rounding).toBe(10);
   });
@@ -46,7 +63,7 @@ describe('table settings', () => {
     s = gameReducer(s, { type: 'startGame' });
     s = add(s, 'א', 0, 50);
     s = gameReducer(s, { type: 'setAmounts', initialBuyIn: 200, rebuyAmounts: [500, 200, 1000] });
-    expect(s.settings).toEqual({ initialBuyIn: 200, rebuyAmounts: [200, 500, 1000], rounding: 5 });
+    expect(s.settings).toEqual({ initialBuyIn: 200, rebuyAmounts: [200, 500, 1000], rounding: 5, chipValue: 1 });
     expect(totalIn(s.players[0])).toBe(50);
     // Invalid amounts fall back to the defaults instead of breaking the table.
     expect(gameReducer(s, { type: 'setAmounts', initialBuyIn: 0, rebuyAmounts: [] }).settings.rebuyAmounts).toEqual(DEFAULT_SETTINGS.rebuyAmounts);
@@ -201,6 +218,78 @@ describe('initials', () => {
     expect(initials('עידו כהן')).toBe('עכ');
     expect(initials('שקד')).toBe('ש');
     expect(initials('  ')).toBe('?');
+  });
+});
+
+describe('chip value ("שווי צ׳יפ")', () => {
+  it('converts chip counts to whole shekels and back', () => {
+    expect(chipsToShekels(1500, 0.5)).toBe(750);
+    expect(chipsToShekels(1500, 0.1)).toBe(150);
+    expect(chipsToShekels(1501, 0.5)).toBe(751);
+    expect(chipsToShekels(300)).toBe(300);
+    expect(shekelsToChips(750, 0.5)).toBe(1500);
+    expect(shekelsToChips(150, 0.1)).toBe(1500);
+  });
+
+  it('accepts 0.01 to 1000 with two decimals, else 1', () => {
+    expect(cleanChipValue(0.5)).toBe(0.5);
+    expect(cleanChipValue('0.25')).toBe(0.25);
+    expect(cleanChipValue(0.333)).toBe(0.33);
+    expect(cleanChipValue(0)).toBe(1);
+    expect(cleanChipValue(-2)).toBe(1);
+    expect(cleanChipValue('x')).toBe(1);
+    expect(cleanChipValue(5000)).toBe(1);
+  });
+
+  it('is a table setting (default 1 ₪); the table opens in chips mode when it differs', () => {
+    expect(DEFAULT_SETTINGS.chipValue).toBe(1);
+    expect(gameReducer(initialState, { type: 'openTable', settings: DEFAULT_SETTINGS }).endMode).toBe('net');
+    let s = gameReducer(initialState, { type: 'openTable', settings: { ...DEFAULT_SETTINGS, chipValue: 0.5 } });
+    expect(s.settings.chipValue).toBe(0.5);
+    expect(s.endMode).toBe('chips');
+    // Saves from before the setting: 1 ₪.
+    expect(normalizeState({ players: [], settings: { initialBuyIn: 50, rebuyAmounts: [50, 100] } }).settings.chipValue).toBe(1);
+    s = gameReducer(s, { type: 'setChipValue', value: 0.25 });
+    expect(s.settings.chipValue).toBe(0.25);
+    // Buy-ins and the other settings stay as they are.
+    expect(s.settings.initialBuyIn).toBe(DEFAULT_SETTINGS.initialBuyIn);
+  });
+
+  it('1,500 chips × 0.5 = 750 ₪: the result is in ₪, buy-ins stay in ₪', () => {
+    let s = gameReducer(initialState, { type: 'openTable', settings: { ...DEFAULT_SETTINGS, chipValue: 0.5 } });
+    s = gameReducer(s, { type: 'seatPlayer', seat: 0, name: 'תומר', amount: 500 });
+    s = gameReducer(s, { type: 'startGame' });
+    s = gameReducer(s, { type: 'setFinal', id: s.players[0].id, amount: chipsToShekels(1500, s.settings.chipValue) });
+    expect(totalIn(s.players[0])).toBe(500);
+    expect(netOf(s, s.players[0])).toBe(250);
+  });
+});
+
+describe('absent players ("לא כאן")', () => {
+  const table = () => {
+    let s = gameReducer(initialState, { type: 'openTable', settings: DEFAULT_SETTINGS });
+    s = gameReducer(s, { type: 'seatPlayer', seat: 0, name: 'עידו', amount: 50 });
+    s = gameReducer(s, { type: 'seatPlayer', seat: 1, name: 'תומר', amount: 50 });
+    return gameReducer(s, { type: 'startGame' });
+  };
+
+  it('a player who left mid-game is absent automatically', () => {
+    let s = table();
+    expect(s.players.map(isAbsent)).toEqual([false, false]);
+    s = gameReducer(s, { type: 'markOut', id: s.players[1].id, kind: 'even' });
+    expect(s.players.map(isAbsent)).toEqual([false, true]);
+    s = gameReducer(s, { type: 'markBack', id: s.players[1].id });
+    expect(s.players.map(isAbsent)).toEqual([false, false]);
+  });
+
+  it('the manager can mark anyone absent, or present again', () => {
+    let s = table();
+    s = gameReducer(s, { type: 'setAbsent', id: s.players[0].id, absent: true });
+    expect(s.players.map(isAbsent)).toEqual([true, false]);
+    // Left mid-game but stayed to watch: marked present by hand.
+    s = gameReducer(s, { type: 'markOut', id: s.players[1].id, kind: 'lost_all' });
+    s = gameReducer(s, { type: 'setAbsent', id: s.players[1].id, absent: false });
+    expect(s.players.map(isAbsent)).toEqual([true, false]);
   });
 });
 

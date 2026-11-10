@@ -1,6 +1,6 @@
 // Turns a table_log row into a short Hebrew sentence, e.g.
 // "אסף הוסיף לעצמו כניסה של 50 ₪". Pure: no React, no Supabase.
-import { formatShekel } from './format.js';
+import { formatChipValue, formatShekel } from './format.js';
 import { EXITS } from './game.js';
 
 const seatLabel = (seat) => `כיסא ${Number(seat) + 1}`;
@@ -36,6 +36,10 @@ export function describeLog(entry) {
     }
     case 'player_back':
       return `${who} החזיר את ${name} למשחק`;
+    case 'presence_changed':
+      return d.absent ? `${who} סימן ש${name} לא כאן` : `${who} סימן ש${name} כאן`;
+    case 'chip_value_changed':
+      return `${who} שינה את שווי הצ׳יפ ל־${formatChipValue(d.new)}`;
     case 'table_renamed':
       return d.new ? `${who} קרא לשולחן ״${d.new}״` : `${who} הסיר את שם השולחן`;
     case 'cash_added':

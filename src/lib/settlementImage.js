@@ -6,7 +6,7 @@ import { formatShekel } from './format.js';
 import { initials } from './game.js';
 import { paletteColor } from './colors.js';
 import { splitName } from './names.js';
-import { CASH_ICON, cashParts } from './settlement.js';
+import { cashParts } from './settlement.js';
 
 export const CARD_WIDTH = 390; // CSS px, like a phone screen
 const PAD = 16;
@@ -148,8 +148,7 @@ function drawPieces(ctx, pieces, cx, y, font) {
 }
 
 // data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }], players: Map(id -> player) }
-// cashIcon: a 💵 before the green amount of an all-cash row.
-export function drawSettlement(data, scale = 3, cashIcon = CASH_ICON) {
+export function drawSettlement(data, scale = 3) {
   const measure = document.createElement('canvas').getContext('2d');
   const nameOf = (id) => data.players.get(id)?.name ?? 'שחקן';
   const sorted = [...data.nets].sort((a, b) => b.net - a.net);
@@ -225,32 +224,20 @@ export function drawSettlement(data, scale = 3, cashIcon = CASH_ICON) {
     drawName(ctx, nameOf(t.to), PAD + 12 + 2 * r + 8, mid, nameMax, 'left');
 
     // Middle: the amount and the line under it (like the screen).
-    // Plain: yellow amount, "←". All cash: green amount (with 💵 when cashIcon),
-    // "← מזומן". Mixed: yellow amount, "200 מזומן · 70 העברה" on one line.
+    // Plain: yellow amount, "←". All cash: green amount, "← מזומן".
+    // Mixed: yellow amount, "200 מזומן · 70 העברה" on one line.
     const cx = CARD_WIDTH / 2;
     const amountFont = `800 18px ${FONT}`;
     const lineFont = `700 13px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = amountFont;
     if (parts && !parts.transfer) {
-      ctx.font = amountFont;
-      const amountW = ctx.measureText(formatShekel(t.amount)).width;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
       ctx.fillStyle = COLORS.cash;
-      if (cashIcon) {
-        ctx.font = `400 22px ${FONT}`;
-        const iconW = ctx.measureText('💵').width + 4;
-        ctx.fillText('💵', cx + amountW / 2 + 2, mid - 9);
-        ctx.font = amountFont;
-        ctx.fillText(formatShekel(t.amount), cx - iconW / 2, mid - 8);
-      } else {
-        ctx.fillText(formatShekel(t.amount), cx, mid - 8);
-      }
+      ctx.fillText(formatShekel(t.amount), cx, mid - 8);
       drawPieces(ctx, [['← ', COLORS.muted], ['מזומן', COLORS.cash]], cx, mid + 13, lineFont);
     } else {
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
       ctx.fillStyle = COLORS.amount;
-      ctx.font = amountFont;
       ctx.fillText(formatShekel(t.amount), cx, mid - 8);
       if (parts) {
         drawPieces(ctx, [[`${parts.cash} מזומן`, COLORS.cash], [' · ', COLORS.muted], [`${parts.transfer} העברה`, COLORS.muted]], cx, mid + 13, lineFont);
