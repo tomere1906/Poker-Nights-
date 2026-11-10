@@ -20,6 +20,6 @@
     "@vitejs/plugin-react": "^4.6.0",
     "tailwindcss": "^4.1.11",
     "vite": "^6.3.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.12"
   }
 }

@@ -18,6 +18,14 @@ export function captureInviteFromUrl() {
   window.history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CODE = /^[0-9a-f]{32}$/i;
+
+// A link someone edited (or broke) never reaches the database.
+export function isValidInvite(invite) {
+  return typeof invite?.tableId === 'string' && typeof invite?.code === 'string' && UUID.test(invite.tableId) && CODE.test(invite.code);
+}
+
 export function pendingInvite() {
   try {
     return JSON.parse(localStorage.getItem(KEY));

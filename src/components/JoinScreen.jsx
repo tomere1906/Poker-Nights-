@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { joinTable } from '../lib/onlineTable.js';
-import { clearPendingInvite } from '../lib/invite.js';
+import { clearPendingInvite, isValidInvite } from '../lib/invite.js';
 import AccountBar from './AccountBar.jsx';
 import { CardsIcon } from './Icons.jsx';
 
@@ -12,7 +12,14 @@ export default function JoinScreen({ invite, auth, onJoined, onCancel }) {
   const signedIn = Boolean(auth.session);
 
   useEffect(() => {
-    if (!signedIn || started.current) return;
+    if (started.current) return;
+    if (!isValidInvite(invite)) {
+      started.current = true;
+      clearPendingInvite();
+      setError('הקישור לא תקף, או שהמשחק בשולחן הזה כבר נגמר.');
+      return;
+    }
+    if (!signedIn) return;
     started.current = true;
     joinTable(invite.tableId, invite.code)
       .then(() => {

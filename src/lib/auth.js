@@ -27,10 +27,20 @@ export function signOut() {
 const AUTH_PARAMS = ['code', 'error', 'error_code', 'error_description'];
 
 // An error Google/Supabase sent back in the URL (e.g. the user cancelled).
+// Only a fixed message is shown: the URL's own text could be written by anyone
+// who sends a link, so it never reaches the screen (only the console).
+export function authErrorText(search, hash) {
+  const params = new URLSearchParams(search);
+  const fromHash = new URLSearchParams(hash.replace(/^#/, ''));
+  const code = params.get('error') || fromHash.get('error');
+  if (!code) return null;
+  const detail = params.get('error_description') || fromHash.get('error_description');
+  if (detail) console.warn('Sign-in error:', code, detail);
+  return code === 'access_denied' ? 'ההתחברות בוטלה' : 'משהו השתבש, נסו שוב';
+}
+
 function readAuthError() {
-  const params = new URLSearchParams(window.location.search);
-  const hash = new URLSearchParams(window.location.hash.slice(1));
-  return params.get('error_description') || hash.get('error_description') || null;
+  return authErrorText(window.location.search, window.location.hash);
 }
 
 // Remove ?code=… / ?error=… once handled, so a refresh doesn't replay them.

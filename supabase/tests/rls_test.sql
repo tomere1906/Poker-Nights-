@@ -9,7 +9,7 @@
 --         C = co-manager candidate in T3 (co-managers, buy-in modes and the change log run on T3)
 --         T4: invites, members picking their own seat, unique seats, swap_seats, 12 colors
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
---         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot; 410+: chip value and "לא כאן"
+--         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot; 410+: chip value and "לא כאן"; 430+: hidden characters in names
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -417,6 +417,19 @@ begin
       (420, 'Log: Q was marked "לא כאן"',                            'C', $$select count(*) from public.table_log where table_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and action = 'presence_changed' and (details ->> 'absent')::boolean$$, 'count:1'),
       (421, 'A member seating himself can''t set "לא כאן"',          'C', $$insert into public.table_players (table_id, user_id, seat, absent) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '55555555-5555-4555-8555-555555555555', 5, true)$$, 'deny'),
       (422, '…but can still take his own seat without it',           'C', $$insert into public.table_players (table_id, user_id, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '55555555-5555-4555-8555-555555555555', 5)$$, 'ok'),
+
+      -- ---------------- hidden characters in names ----------------
+      -- chr(8238) = right-to-left override, chr(8203) = zero-width space, chr(8294) = isolate, chr(8205) = zero-width joiner (kept: emoji need it).
+      (430, 'P''s name with a direction override is saved clean',    'P', $$update public.profiles set display_name = 'טו' || chr(8238) || 'מר' where id = '22222222-2222-4222-8222-222222222222'$$, 'rows:1'),
+      (431, '…stored as plain "טומר"',                              'P', $$select count(*) from public.profiles where id = '22222222-2222-4222-8222-222222222222' and display_name = 'טומר'$$, 'count:1'),
+      (432, 'A name made only of hidden characters becomes "שחקן"', 'P', $$with u as (update public.profiles set display_name = chr(8203) || chr(8238) where id = '22222222-2222-4222-8222-222222222222' returning display_name) select count(*) from u where display_name = 'שחקן'$$, 'count:1'),
+      (433, 'Per-table names lose zero-width spaces',               'Q', $$update public.table_players set nickname = 'מנהל' || chr(8203) || ' 2' where id = 'b0000000-0000-4000-8000-000000000001'$$, 'rows:1'),
+      (434, '…stored as "מנהל 2"',                                  'Q', $$select count(*) from public.table_players where id = 'b0000000-0000-4000-8000-000000000001' and nickname = 'מנהל 2'$$, 'count:1'),
+      (435, 'A guest named only with hidden characters is rejected', 'Q', $$insert into public.table_players (table_id, nickname, color, seat) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', chr(8203) || chr(8294), 1, 7)$$, 'error:23514'),
+      (436, 'Table names are cleaned too',                          'Q', $$update public.poker_tables set name = chr(8294) || 'שישי' || chr(8297) where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$, 'rows:1'),
+      (437, '…stored as "שישי"',                                    'Q', $$select count(*) from public.poker_tables where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' and name = 'שישי'$$, 'count:1'),
+      (438, 'Emoji joined with ZWJ stay whole',                     'Q', $$update public.table_players set nickname = chr(128104) || chr(8205) || chr(128105) where id = 'b0000000-0000-4000-8000-000000000001'$$, 'rows:1'),
+      (439, '…stored with the joiner',                              'Q', $$select count(*) from public.table_players where id = 'b0000000-0000-4000-8000-000000000001' and nickname = chr(128104) || chr(8205) || chr(128105)$$, 'count:1'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 8 tables',           'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments') and rowsecurity$$, 'count:8'),
