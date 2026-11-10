@@ -31,12 +31,15 @@ function record(name, ok, detail = '') {
   console.log(`${ok ? '✅' : '❌'} ${name}${ok ? '' : ` → ${detail}`}`);
 }
 
-const client = (token) =>
-  createClient(URL_, KEY, {
+const client = (token) => {
+  const c = createClient(URL_, KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : {},
-    realtime: token ? { params: { apikey: KEY } } : undefined,
   });
+  // Live updates authenticate separately: as this user, not as a visitor.
+  if (token) c.realtime.setAuth(token);
+  return c;
+};
 
 // Blocked = an error, or no rows touched / seen.
 async function blocked(name, run) {
@@ -159,16 +162,30 @@ if (!existsSync(tokensFile)) {
     await blocked("B can't hide A's game for A", () => B.from('hidden_games').insert({ table_id: T, user_id: aId }).select());
     await blocked("A can't hand his table to B", () => A.from('poker_tables').update({ manager_id: bId }).eq('id', T).select());
 
-    // Live updates: B listens to A's table while A changes it.
-    let leaked = 0;
-    const channel = B.channel(`attack-${T}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'table_log', filter: `table_id=eq.${T}` }, () => leaked++)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'buy_ins' }, () => leaked++);
-    await new Promise((resolve) => channel.subscribe((s) => (s === 'SUBSCRIBED' || s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') && resolve()));
+    // Live updates: B listens to A's table while A changes it. A listens too, as
+    // the control: if A gets nothing either, the check proves nothing.
+    const events = { A: 0, B: 0 };
+    const status = {};
+    const listen = (c, who) =>
+      new Promise((resolve) => {
+        const ch = c
+          .channel(`attack-${who}-${T}`)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'table_log', filter: `table_id=eq.${T}` }, () => events[who]++)
+          .subscribe((s) => {
+            if (s === 'CLOSED') return; // closing at the end isn't a result
+            status[who] = s;
+            resolve(ch);
+          });
+      });
+    const [chA, chB] = await Promise.all([listen(A, 'A'), listen(B, 'B')]);
+    await new Promise((r) => setTimeout(r, 1500));
     await A.from('buy_ins').insert({ table_id: T, player_id: guest.id, amount: 100 });
-    await new Promise((r) => setTimeout(r, 3000));
-    await B.removeChannel(channel);
-    record("B's live subscription gets nothing from A's table", leaked === 0, `${leaked} event(s) leaked`);
+    await new Promise((r) => setTimeout(r, 4000));
+    await A.removeChannel(chA);
+    await B.removeChannel(chB);
+    record('live updates: both subscriptions connected', status.A === 'SUBSCRIBED' && status.B === 'SUBSCRIBED', JSON.stringify(status));
+    record('live updates: A (the owner) gets the change', events.A > 0, 'A got nothing, so the next check proves nothing');
+    record("live updates: B gets nothing from A's table", events.B === 0, `${events.B} event(s) leaked`);
 
     // With the invite, B becomes a plain member: sees the table, still can't manage it.
     const join = await B.from('table_members').insert({ table_id: T, invite_code: table.invite_code });

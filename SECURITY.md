@@ -27,15 +27,13 @@ would (`node supabase/tests/attack_test.mjs`).
 - Only Google sign-in is enabled: no email/password, phone or anonymous sign-up that could create accounts around Google.
 - The API description (OpenAPI) and GraphQL list no tables to a visitor; no storage buckets.
 
-**Part B, two real accounts** (A owns a fresh test table, B is an outsider, then
-a plain member): ⏳ needs two short-lived session tokens in `.attack-tokens.json`
-(git-ignored). Covers: B can't read, change, take over, delete or end A's table;
-can't seat himself or guests, add/change/delete buy-ins, record cash or write the
-log; can't join with a wrong code or as co-manager; can't hide games for A;
-B's live (Realtime) subscription gets nothing from A's table; with the real
-invite B becomes a plain member who still can't manage anything; A can't hand the
-table to B. Every "change" writes the value already there, and the test table is
-deleted at the end, so even a hole would change nothing.
+**Part B, two real accounts: 36 / 36 blocked ✅** (2026-11-10; total with part A: **58 / 58**).
+Account A opens a fresh test table; account B is an outsider, then a plain member.
+- B can't read any of A's table (table, seats, buy-ins, log, members, cash), can't see A's profile (they share no table), and A's table doesn't reach B's stats. Profiles have no email column at all.
+- B can't change, take over, delete or end A's table; can't seat himself or guests, move seats (also not via ), add/change/delete buy-ins, record cash or write the log; can't hide A's game for A. A can't hand the table to B either.
+- B can't join with a wrong invite code, nor as co-manager with the right one. With the real invite B becomes a plain member who still can't add buy-ins, change the table or make himself co-manager.
+- Live updates (Realtime): both subscriptions connected as their own users; A (the owner) received the change, B received nothing. The owner's event is the control: it proves the check really listened. (The first version of this check didn't authenticate B's subscription and would have passed on a failed connection; found and fixed before recording this result.)
+- Every "change" attempt wrote the value that was already there, and the test table was deleted at the end.
 
 ## 3. Secrets in the git history
 
