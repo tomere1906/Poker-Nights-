@@ -127,6 +127,16 @@ export default function HomeScreen({
         <OnlineSection auth={auth} onContinueOnline={onContinueOnline} onNewOnline={onNewOnline} onOpenStats={onOpenStats} />
       )}
       <LocalSection state={state} onContinueLocal={onContinueLocal} onNewLocal={onNewLocal} />
+
+      <footer className="flex justify-center gap-3 pt-2 text-xs text-slate-500">
+        <a href={`${import.meta.env.BASE_URL}privacy.html`} className="underline-offset-4 hover:underline">
+          מדיניות פרטיות
+        </a>
+        <span aria-hidden>·</span>
+        <a href={`${import.meta.env.BASE_URL}terms.html`} className="underline-offset-4 hover:underline">
+          תנאי שימוש
+        </a>
+      </footer>
     </div>
   );
 }

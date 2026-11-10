@@ -1,7 +1,8 @@
 // Minimal offline support: network-first for pages, cache-first for assets.
 // Paths are relative to this file, so it works under any base path (e.g. GitHub Pages).
 // v4: new logo/app icons (icons are cache-first, so a new name drops the old ones).
-const CACHE = 'poker-nights-v4';
+// v5: other pages (privacy, terms) are cached under their own address, never as the app.
+const CACHE = 'poker-nights-v5';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {
@@ -27,13 +28,19 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin && !FONT_HOSTS.includes(url.hostname)) return;
 
   if (request.mode === 'navigate') {
+    // The app itself (any ?table=… address) is kept as './'; other pages under their own address.
+    const root = new URL('./', self.location).pathname;
+    const key = url.pathname === root || url.pathname === root + 'index.html' ? './' : url.pathname;
     event.respondWith(
       fetch(request)
         .then((res) => {
-          caches.open(CACHE).then((cache) => cache.put('./', res.clone()));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((cache) => cache.put(key, copy));
+          }
           return res;
         })
-        .catch(() => caches.match('./'))
+        .catch(() => caches.match(key).then((cached) => cached || caches.match('./')))
     );
     return;
   }

@@ -127,6 +127,7 @@ Build in steps and stop for the user's confirmation after each step.
        - **No logo for now**: uploading one triggers Google's manual brand verification (days to weeks). Add it later only if needed.
        - The pages must be reachable at public URLs, i.e. on the live site (`main`). Pushing them to `main` needs the user's explicit OK at that moment.
        - The consent screen will still name `emkzkgpqaupqudzgewxa.supabase.co` unless a Supabase custom domain (paid) is used.
+       - **Done on `multiplayer`:** `public/privacy.html` and `public/terms.html` (static Hebrew pages, contact toyano67@gmail.com, ages 18+), linked from the start screen footer. Their content must match what the app really stores and shows; update them (and the date in them) whenever that changes.
    11. Final security pass: Advisor, all SQL tests, docs; merging to `main` only when the user says so.
 3. **Share as image** (built; the iPhone share sheet is tested once live, since it needs HTTPS): "שתף כתמונה" replaced "העתק לוואטסאפ" on the settlement screen, local and online (see Features 6).
 4. **Future, after going live: import personal game history** from another app or a CSV template. Personal stats only (never other players' stats or shared tables), every imported game marked as imported, a preview before saving, and undo (remove a whole import). Design the schema + RLS + tests when we get there.
