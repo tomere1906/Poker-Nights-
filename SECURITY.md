@@ -12,7 +12,7 @@ and column grants. The checks below attack exactly that: the database directly.
 
 | Check | Result |
 |---|---|
-| `supabase/tests/rls_test.sql`: 327 cases that try to break every rule as manager, co-manager, player, stranger and signed-out visitor | ⏳ to run after migration `20261110120000_clean_names.sql` (last run: 317/317 passed, 2026-11-10) |
+| `supabase/tests/rls_test.sql`: 329 cases that try to break every rule as manager, co-manager, player, stranger and signed-out visitor | ⏳ after `20261110130000_clean_names_keep_blank_checks.sql`. First run after `clean_names`: 322/327, all 5 failures from that migration turning blank names into "שחקן"/"no name" instead of rejecting them (fixed by the follow-up migration; tests 432, 440, 441 cover it) |
 | Supabase **Security Advisor** | ⏳ |
 | Supabase **Performance Advisor** | ⏳ |
 
@@ -71,7 +71,7 @@ OAuth client secrets, GitHub tokens, private keys, database URLs with passwords,
 | Check | Result |
 |---|---|
 | HTML/script in names, table names, log | Safe ✅: React shows them as text; the share image draws them on a canvas. The only raw HTML is the QR code, generated from the invite link, not from names. |
-| Hidden characters in names (invisible spaces, right-to-left overrides: "Tomer" that looks like the real Tomer, text that flips) | **Fixed** in the database: migration `20261110120000_clean_names.sql` strips them from profile names (including the name from Google), per-table names and table names; tests 430–439. Emoji joiners are kept. ⏳ migration to run |
+| Hidden characters in names (invisible spaces, right-to-left overrides: "Tomer" that looks like the real Tomer, text that flips) | **Fixed** in the database: migration `20261110120000_clean_names.sql` strips them from profile names (including the name from Google), per-table names and table names; plus `20261110130000_clean_names_keep_blank_checks.sql` so a blank name is still rejected rather than replaced. Tests 430–441. Emoji joiners are kept. ⏳ follow-up migration to run |
 | Guessable invite codes | Safe ✅: 32 random hex characters from `gen_random_uuid()` (~10^36), valid only together with the table id, and only until the game ends. |
 | Tampered invite links | **Fixed**: a link whose table id or code isn't in the right format is rejected in the app before reaching the database (`isValidInvite`, unit-tested). The database checks the real code anyway. |
 | Text injected through the sign-in error in the address bar (`?error_description=…`) | **Fixed**: the app shows only its own fixed message ("ההתחברות בוטלה" / "משהו השתבש, נסו שוב"), never the URL's text (unit-tested). |
