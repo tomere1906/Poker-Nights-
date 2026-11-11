@@ -14,6 +14,7 @@ import {
   isAbsent,
   netOf,
   normalizeState,
+  onTableTotal,
   potTotal,
   shekelsToChips,
   timesOf,
@@ -405,6 +406,21 @@ describe('leaving mid-game frees the seat', () => {
       ],
     });
     expect(s.players.map((p) => p.seat)).toEqual([0, null, 1]);
+  });
+
+  it('"על השולחן" is the pot minus what players who left took; "חזר לשחק" puts it back', () => {
+    let s = add(add(add(started, 'א', 0, 150), 'ב', 1, 150), 'ג', 2, 150);
+    expect(potTotal(s.players)).toBe(450);
+    expect(onTableTotal(s.players)).toBe(450);
+    const b = s.players[1].id;
+    s = gameReducer(s, { type: 'markOut', id: b, kind: 'amount', chips: 100 });
+    expect(onTableTotal(s.players)).toBe(350);
+    expect(potTotal(s.players)).toBe(450);
+    s = gameReducer(s, { type: 'markBack', id: b });
+    expect(onTableTotal(s.players)).toBe(450);
+    // Lost everything: nothing leaves the table.
+    s = gameReducer(s, { type: 'markOut', id: b, kind: 'lost_all' });
+    expect(onTableTotal(s.players)).toBe(450);
   });
 
   it('the exit with an amount shows a door', () => {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MAX_PLAYERS, potTotal, seatedPlayers } from '../lib/game.js';
+import { MAX_PLAYERS, onTableTotal, potTotal, seatedPlayers } from '../lib/game.js';
 import { formatShekel } from '../lib/format.js';
 import PokerTable from './PokerTable.jsx';
 import AddPlayerSheet from './AddPlayerSheet.jsx';
@@ -68,6 +68,7 @@ export default function TableScreen({
           players={seated}
           leftCount={left.length}
           pot={potTotal(players)}
+          onTable={onTableTotal(players)}
           started={started}
           name={tableName}
           placing={placing}

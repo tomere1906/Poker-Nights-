@@ -27,9 +27,11 @@ function seatUnder(x, y) {
   return el ? Number(el.dataset.seat) : null;
 }
 
-// players: those seated. pot: everything bought in tonight, including players who
-// left mid-game (default: the seated players' buy-ins). name: the online table's name.
-export default function PokerTable({ players, leftCount = 0, pot = null, started, name, placing, onPlace, onEmptySeat, onPlayerTap, onMove }) {
+// players: those seated. pot: everything bought in tonight ("נכנס הערב"), including
+// players who left mid-game; onTable: what is still on the table ("על השולחן": the pot
+// minus what those players took). Both default to the seated players' buy-ins.
+// name: the online table's name.
+export default function PokerTable({ players, leftCount = 0, pot = null, onTable = null, started, name, placing, onPlace, onEmptySeat, onPlayerTap, onMove }) {
   const pointer = useRef(null);
   const [drag, setDrag] = useState(null); // { id, x, y, over }
 
@@ -99,8 +101,9 @@ export default function PokerTable({ players, leftCount = 0, pot = null, started
               {name && (
                 <p className="mt-2 max-w-[80%] truncate text-center text-sm font-extrabold text-amber-100 drop-shadow">{name}</p>
               )}
-              <p className={`${name ? 'mt-0.5' : 'mt-2'} text-xs font-medium text-white/70`}>בקופה</p>
-              <p className="text-2xl font-extrabold text-white drop-shadow">{formatShekel(pot ?? potTotal(players))}</p>
+              <p className={`${name ? 'mt-0.5' : 'mt-2'} text-xs font-medium text-white/70`}>על השולחן</p>
+              <p className="text-2xl font-extrabold text-white drop-shadow">{formatShekel(onTable ?? potTotal(players))}</p>
+              <p className="text-[11px] font-medium text-white/60">נכנס הערב: {formatShekel(pot ?? potTotal(players))}</p>
               <p className="text-xs text-white/60">{countLabel(players, leftCount)}</p>
             </>
           )}

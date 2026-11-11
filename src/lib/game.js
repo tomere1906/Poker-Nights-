@@ -121,6 +121,13 @@ export function potTotal(players) {
   return players.reduce((sum, p) => sum + totalIn(p), 0);
 }
 
+// "על השולחן": everything bought in tonight minus what players who left mid-game
+// took with them. "חזר לשחק" puts their amount back.
+export function onTableTotal(players) {
+  const taken = players.reduce((sum, p) => sum + (p.out ? p.out.chips : 0), 0);
+  return Math.max(0, potTotal(players) - taken);
+}
+
 export function initials(name) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
