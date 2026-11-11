@@ -121,6 +121,10 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
   const counting = endMode === 'chips' && chipValue !== DEFAULT_CHIP_VALUE;
   // The chip count as typed (the stored ₪ are rounded, so it can't always be derived).
   const [chipDrafts, setChipDrafts] = useState({});
+  // Per player, how the result is typed in the chips mode: their chips (default)
+  // or their money in ₪ (one friend says "600 chips", another "300 ₪").
+  const [units, setUnits] = useState({});
+  const inChips = (id) => counting && (units[id] ?? 'chips') === 'chips';
   // In net mode, a typed amount waits here until a +/− is chosen.
   const [signs, setSigns] = useState({});
   const [drafts, setDrafts] = useState({});
@@ -221,7 +225,7 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
         {endMode === 'net'
           ? 'כמה כל אחד הרוויח או הפסיד? בחר + או − ורשום סכום'
           : counting
-            ? `כמה צ׳יפים נשארו לכל אחד? צ׳יפ שווה ${formatChipValue(chipValue)}, ההמרה לשקלים אוטומטית`
+            ? `כמה צ׳יפים נשארו לכל אחד? צ׳יפ שווה ${formatChipValue(chipValue)}, ההמרה לשקלים אוטומטית. אפשר לבחור בכל שורה צ׳יפים או ₪`
             : 'עם כמה צ׳יפים כל אחד יצא?'}
       </p>
 
@@ -241,7 +245,7 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
                     <span>בפנים {formatShekel(totalIn(p))}</span>
                     {net !== null && <NetBadge net={net} />}
                     {needsSign && <span className="font-bold text-amber-300">+ או −?</span>}
-                    {counting && p.id in finals && (
+                    {inChips(p.id) && p.id in finals && (
                       <span className="font-bold text-slate-200">
                         {formatCount(chipCount(p.id))} צ׳יפים = {formatShekel(finals[p.id])}
                       </span>
@@ -287,13 +291,35 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
                     />
                   </>
                 ) : (
-                  <AmountField
-                    enterKeyHint={enterKeyHint}
-                    value={p.id in finals ? String(counting ? chipCount(p.id) : finals[p.id]) : ''}
-                    onChange={(text) => (counting ? setChips(p.id, text) : onFinal(p.id, parse(text)))}
-                    placeholder={counting ? 'צ׳יפים' : 'יוצא עם'}
-                    suffix={counting ? '' : '₪'}
-                  />
+                  <div className="flex flex-col items-center gap-1">
+                    <AmountField
+                      enterKeyHint={enterKeyHint}
+                      value={p.id in finals ? String(inChips(p.id) ? chipCount(p.id) : finals[p.id]) : ''}
+                      onChange={(text) => (inChips(p.id) ? setChips(p.id, text) : onFinal(p.id, parse(text)))}
+                      placeholder={inChips(p.id) ? 'צ׳יפים' : 'יוצא עם'}
+                      suffix={inChips(p.id) ? '' : '₪'}
+                    />
+                    {counting && (
+                      <div className="flex shrink-0 rounded-full bg-slate-950/50 p-0.5 ring-1 ring-white/10" role="group" aria-label="הסכום ב">
+                        {[
+                          ['chips', 'צ׳יפים'],
+                          ['shekels', '₪'],
+                        ].map(([unit, label]) => (
+                          <button
+                            key={unit}
+                            type="button"
+                            aria-pressed={(units[p.id] ?? 'chips') === unit}
+                            onClick={() => setUnits((u) => ({ ...u, [p.id]: unit }))}
+                            className={`h-8 rounded-full px-2.5 text-xs font-bold transition ${
+                              (units[p.id] ?? 'chips') === unit ? 'bg-emerald-400 text-slate-900' : 'text-slate-400'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 

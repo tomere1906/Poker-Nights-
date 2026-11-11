@@ -330,10 +330,13 @@ function makeActions(view) {
 
     // Left mid-game: the seat becomes free (the players after it close the gap),
     // the exit amount (₪) prefills the end-game screen. cash: { from, bills } left when leaving, or null.
+    // A player who already left can have their exit changed: no seat to give up, and the new amount replaces any result.
     async markOut(player, kind, amount, cash = null) {
       const out = { out_kind: kind, out_chips: exitChips(player, kind, amount), seat: null };
+      if (player.out) out.final_value = null;
       must(await supabase.from('table_players').update(out).eq('id', player.id));
-      for (const p of players()) if (p.seat > player.seat) await setSeat(p.id, p.seat - 1);
+      // Only a seated player frees a seat (careful: in JS, 1 > null is true).
+      if (!player.out) for (const p of players()) if (p.seat > player.seat) await setSeat(p.id, p.seat - 1);
       if (cash) await insertCash(cash);
     },
 

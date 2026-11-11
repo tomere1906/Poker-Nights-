@@ -423,6 +423,28 @@ describe('leaving mid-game frees the seat', () => {
     expect(onTableTotal(s.players)).toBe(450);
   });
 
+  it('a player who already left can have their exit changed directly', () => {
+    let s = add(add(add(started, 'א', 0, 100), 'ב', 1, 100), 'ג', 2, 100);
+    const b = s.players[1].id;
+    s = gameReducer(s, { type: 'markOut', id: b, kind: 'amount', chips: 250 });
+    expect(s.players.map((p) => p.seat)).toEqual([0, null, 1]);
+    s = gameReducer(s, { type: 'markOut', id: b, kind: 'lost_all' });
+    // Still seatless, nobody else moved, the result follows the new exit.
+    expect(s.players.map((p) => p.seat)).toEqual([0, null, 1]);
+    expect(s.players[1].out).toEqual({ kind: 'lost_all', chips: 0 });
+    expect(netOf(s, s.players[1])).toBe(-100);
+    s = gameReducer(s, { type: 'markOut', id: b, kind: 'amount', chips: 40 });
+    expect(netOf(s, s.players[1])).toBe(-60);
+  });
+
+  it('removing a player who left moves nobody', () => {
+    let s = add(add(add(started, 'א', 0, 100), 'ב', 1, 100), 'ג', 2, 100);
+    s = gameReducer(s, { type: 'markOut', id: s.players[0].id, kind: 'lost_all' });
+    expect(s.players.map((p) => p.seat)).toEqual([null, 0, 1]);
+    s = gameReducer(s, { type: 'removePlayer', id: s.players[0].id });
+    expect(s.players.map((p) => p.seat)).toEqual([0, 1]);
+  });
+
   it('the exit with an amount shows a door', () => {
     expect(EXITS.amount.icon).toBe('🚪');
   });

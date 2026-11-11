@@ -248,20 +248,23 @@ export function gameReducer(state, action) {
         finals,
         cash: state.cash.filter((c) => c.from !== action.id),
         // During setup the seat just becomes free; once started, close the gap.
-        players: state.started ? rest.map((p) => (p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)) : rest,
+        // A player who left mid-game has no seat: nobody moves (in JS, 1 > null is true).
+        players:
+          state.started && !gone.out ? rest.map((p) => (!p.out && p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)) : rest,
       };
     }
     case 'markOut': {
       // The player gives up their seat (the others close the gap) and stays in the
       // results; what they left with becomes their final result.
+      // A player who already left can have their exit changed (no seat to give up again).
       const player = state.players.find((p) => p.id === action.id);
-      if (!player || player.out || !EXITS[action.kind]) return state;
+      if (!player || !EXITS[action.kind]) return state;
       const chips = exitChips(player, action.kind, action.chips);
       return {
         ...state,
         players: state.players.map((p) => {
           if (p.id === action.id) return { ...p, out: { kind: action.kind, chips }, seat: null };
-          return !p.out && p.seat > player.seat ? { ...p, seat: p.seat - 1 } : p;
+          return !player.out && !p.out && p.seat > player.seat ? { ...p, seat: p.seat - 1 } : p;
         }),
         finals: { ...state.finals, [action.id]: state.endMode === 'chips' ? chips : chips - totalIn(player) },
       };
