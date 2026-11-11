@@ -73,6 +73,54 @@ function RowAmount({ row }) {
 // present; an absent winner gets a transfer). onAbsentChange(id, absent): shows
 // the "מי לא כאן?" toggles (managers, before the game is closed). manager: the
 // manager's seat, who takes cash that no present winner is owed and passes it on.
+// The line under a stored row (closed online table): its status ("פתוח" /
+// "שולם ✓", a toggle for the payer, the receiver and managers) and, for the
+// payer only, "העתק טלפון לביט" when the receiver saved a number.
+function RowFooter({ row, canMark, onTogglePaid, phone, onBit }) {
+  const [busy, setBusy] = useState(false);
+  const paid = Boolean(row.paidAt);
+  const status = paid ? 'שולם ✓' : 'פתוח';
+  const statusClass = paid ? 'bg-emerald-400/15 text-emerald-300' : 'bg-slate-950/50 text-slate-400';
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/5 pt-2">
+      {canMark ? (
+        <button
+          type="button"
+          aria-pressed={paid}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onTogglePaid(row, !paid);
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className={`rounded-xl px-3 py-2 text-sm font-bold transition active:scale-95 disabled:opacity-60 ${statusClass}`}
+        >
+          {status}
+          {!paid && <span className="text-slate-500"> · סמן ששולם</span>}
+        </button>
+      ) : (
+        <span className={`rounded-xl px-3 py-2 text-sm font-bold ${statusClass}`}>{status}</span>
+      )}
+      {phone && (
+        <button
+          type="button"
+          onClick={() => onBit(row, phone)}
+          className="ms-auto rounded-xl bg-sky-400/15 px-3 py-2 text-sm font-bold text-sky-200 transition active:scale-95"
+        >
+          העתק טלפון לביט 📋
+        </button>
+      )}
+    </div>
+  );
+}
+
+// stored: the transfers saved when an online table was closed (with paidAt);
+// shown instead of recomputing, with "N מתוך M שולמו" on top. canMark(row) /
+// onTogglePaid(row, paid): "שולם ✓". phoneFor(row): the receiver's number for
+// the viewer (only the payer gets one), onBit(row, phone): copy it and open Bit.
 // children: extra buttons under "share".
 export default function Settlement({
   players,
@@ -86,6 +134,11 @@ export default function Settlement({
   tableName = null,
   date = null,
   notice = null,
+  stored = NONE,
+  canMark = null,
+  onTogglePaid = null,
+  phoneFor = null,
+  onBit = null,
   onBack,
   children,
 }) {
@@ -96,10 +149,14 @@ export default function Settlement({
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
-  const { nets, transfers } = useMemo(
+  const computed = useMemo(
     () => settle(entries, { unit: rounding, cash, absent, manager }),
     [entries, rounding, cash, absent, manager]
   );
+  const { nets } = computed;
+  // A closed online table shows exactly what was stored when it was closed.
+  const transfers = stored.length > 0 ? stored : computed.transfers;
+  const paidCount = stored.filter((t) => t.paidAt).length;
   const away = new Set(absent);
   // The header: table name and date only.
   const details = [tableName, formatDate(when)].filter(Boolean).join(' · ');
@@ -183,13 +240,23 @@ export default function Settlement({
         </div>
       )}
 
+      {stored.length > 0 && (
+        <p
+          className={`mb-3 rounded-2xl px-4 py-2 text-center text-sm font-bold ${
+            paidCount === stored.length ? 'bg-emerald-400/15 text-emerald-200' : 'bg-slate-800/70 text-slate-300'
+          }`}
+        >
+          {paidCount === stored.length ? `כל ההעברות שולמו ✓` : `${paidCount} מתוך ${stored.length} שולמו`}
+        </p>
+      )}
+
       {transfers.length === 0 ? (
         <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-lg">כולם יצאו מאוזנים 🤝</p>
       ) : (
         <ul className="space-y-2">
           {transfers.map((t, i) => (
             <li
-              key={i}
+              key={t.id ?? i}
               className="animate-pop-in rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5"
               style={{ animationDelay: `${i * 60}ms` }}
             >
@@ -204,6 +271,15 @@ export default function Settlement({
                   <PlayerName name={nameOf(t.to)} className="text-end font-bold" />
                 </div>
               </div>
+              {t.id && (
+                <RowFooter
+                  row={t}
+                  canMark={Boolean(onTogglePaid && canMark?.(t))}
+                  onTogglePaid={onTogglePaid}
+                  phone={phoneFor?.(t) ?? null}
+                  onBit={onBit}
+                />
+              )}
             </li>
           ))}
         </ul>

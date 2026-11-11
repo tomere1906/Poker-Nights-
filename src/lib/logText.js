@@ -46,6 +46,10 @@ export function describeLog(entry) {
       return `${who} רשם ש${name} שילם ${formatShekel(d.amount)} במזומן 💵`;
     case 'cash_removed':
       return `${who} מחק מזומן של ${formatShekel(d.amount)} של ${name}`;
+    case 'transfer_paid':
+      return `${who} סימן ששולם: ${name} ← ${d.to ?? 'שחקן'} ${formatShekel(d.amount)} ✓`;
+    case 'transfer_unpaid':
+      return `${who} ביטל סימון תשלום: ${name} ← ${d.to ?? 'שחקן'} ${formatShekel(d.amount)}`;
     case 'result_set':
       return `${who} הזין תוצאה ל${name}`;
     case 'member_joined':

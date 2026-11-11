@@ -70,8 +70,14 @@ export async function listOpenTables() {
   );
 }
 
+// Reads that may not exist yet while a migration hasn't been applied: an empty list then.
+function optional({ data, error }) {
+  if (error && ['42P01', 'PGRST200', 'PGRST205'].includes(error.code)) return [];
+  return must({ data, error });
+}
+
 async function loadTable(tableId) {
-  const [table, players, buyIns, members, log, cash] = await Promise.all([
+  const [table, players, buyIns, members, log, cash, transfers, phones] = await Promise.all([
     // poker_tables reaches profiles several ways (manager, members, players): name the FK.
     supabase
       .from('poker_tables')
@@ -95,6 +101,14 @@ async function loadTable(tableId) {
       .order('created_at', { ascending: false })
       .limit(300),
     supabase.from('cash_payments').select('id, payer_id, amount, created_at').eq('table_id', tableId).order('created_at'),
+    // Who pays whom, stored when the table was closed (empty while it's open).
+    supabase
+      .from('settlement_transfers')
+      .select('id, position, from_player, to_player, amount, cash, paid_at, paid_by')
+      .eq('table_id', tableId)
+      .order('position'),
+    // RLS returns only my own number and the numbers of people I have to transfer money to.
+    supabase.from('profile_phones').select('user_id, phone'),
   ]);
   return {
     table: must(table),
@@ -103,6 +117,8 @@ async function loadTable(tableId) {
     members: must(members),
     log: must(log),
     cash: must(cash),
+    transfers: optional(transfers),
+    phones: optional(phones),
   };
 }
 
@@ -201,6 +217,17 @@ export function toView(raw, userId) {
     myUserId: userId,
     // Cash paid into the pot (same shape as the local game's state.cash).
     cash: raw.cash.map((c) => ({ id: c.id, from: c.payer_id, amount: c.amount })),
+    // Stored at closing, in display order ([] for tables closed before this existed).
+    transfers: (raw.transfers ?? []).map((t) => ({
+      id: t.id,
+      from: t.from_player,
+      to: t.to_player,
+      amount: t.amount,
+      cash: t.cash,
+      paidAt: t.paid_at ? Date.parse(t.paid_at) : null,
+    })),
+    // { userId: '05…' }: my own number and those of people I have to transfer money to.
+    phones: Object.fromEntries((raw.phones ?? []).map((p) => [p.user_id, p.phone])),
     log: raw.log,
   };
 }
@@ -363,11 +390,30 @@ function makeActions(view) {
       must(await supabase.from('table_players').update({ final_value: chips }).eq('id', playerId));
     },
 
-    // nets: the settled whole-shekel results ({ id, net }[]). One transaction:
-    // the database checks they add up to 0 and that only the manager ends the game.
-    async endGame(nets) {
+    // nets: the settled whole-shekel results ({ id, net }[]); transfers: who pays
+    // whom, as shown ({ from, to, amount, cash }[]). One transaction: the database
+    // checks the results add up to 0, the transfers match them, and that only the
+    // manager ends the game.
+    async endGame(nets, transfers) {
       const byId = Object.fromEntries(nets.map((e) => [e.id, e.net]));
-      must(await supabase.rpc('end_game', { p_table: tableId, p_nets: byId }));
+      const rows = transfers.map((t) => ({ from: t.from, to: t.to, amount: t.amount, cash: t.cash ?? 0 }));
+      const result = await supabase.rpc('end_game', { p_table: tableId, p_nets: byId, p_transfers: rows });
+      // Before the migration that stores transfers: close the old way.
+      if (result.error?.code === 'PGRST202') {
+        must(await supabase.rpc('end_game', { p_table: tableId, p_nets: byId }));
+        return;
+      }
+      must(result);
+    },
+
+    // "שולם ✓" (payer, receiver, managers; the database stamps who and when).
+    async setPaid(transferId, paid) {
+      must(
+        await supabase
+          .from('settlement_transfers')
+          .update({ paid_at: paid ? new Date().toISOString() : null })
+          .eq('id', transferId)
+      );
     },
 
     async reopen() {

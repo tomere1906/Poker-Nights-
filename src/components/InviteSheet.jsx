@@ -1,28 +1,13 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import BottomSheet from './BottomSheet.jsx';
+import { copyText } from '../lib/clipboard.js';
 
 // "תומר הזמין אותך לשחק פוקר בשולחן 'שישי אצל אסף' 🃏 הצטרף כאן: <link>"
 export function inviteMessage(link, { managerName, tableName } = {}) {
   const who = managerName?.trim() || 'חבר';
   const where = tableName?.trim() ? ` בשולחן '${tableName.trim()}'` : '';
   return `${who} הזמין אותך לשחק פוקר${where} 🃏 הצטרף כאן: ${link}`;
-}
-
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
-  }
 }
 
 // "הזמן חברים": share sheet (WhatsApp etc.), wa.me fallback, copy, and a QR

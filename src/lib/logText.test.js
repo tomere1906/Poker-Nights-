@@ -48,6 +48,13 @@ describe('describeLog: exits and table names', () => {
     expect(say('chip_value_changed', { old: 1, new: 0.5 }, 'תומר')).toContain('0.5');
   });
 
+  it('describes "שולם ✓" marks, without any phone number', () => {
+    expect(say('transfer_paid', { name: 'עידו', to: 'תומר', amount: 150 }, 'עידו')).toBe('עידו סימן ששולם: עידו ← תומר 150 ₪ ✓');
+    expect(say('transfer_unpaid', { name: 'עידו', to: 'תומר', amount: 150 }, 'אסף')).toBe(
+      'אסף ביטל סימון תשלום: עידו ← תומר 150 ₪'
+    );
+  });
+
   it('describes cash paid during the night', () => {
     expect(say('cash_added', { name: 'נדב', amount: 200 }, 'תומר')).toBe('תומר רשם שנדב שילם 200 ₪ במזומן 💵');
     expect(say('cash_removed', { name: 'נדב', amount: 200 }, 'תומר')).toBe('תומר מחק מזומן של 200 ₪ של נדב');

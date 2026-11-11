@@ -8,6 +8,10 @@ import TableManageSheet from './TableManageSheet.jsx';
 import OnlineEndGame from './OnlineEndGame.jsx';
 import Settlement from './Settlement.jsx';
 import { settle } from '../lib/settlement.js';
+import { openBit } from '../lib/bit.js';
+import { copyText } from '../lib/clipboard.js';
+import { formatShekel } from '../lib/format.js';
+import { formatPhone } from '../lib/phone.js';
 import { CardsIcon } from './Icons.jsx';
 
 const HEADER_BUTTON = 'rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 active:scale-95';
@@ -155,7 +159,8 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
 
   if (panel === 'log') return <TableLog entries={view.log} tableName={view.name} onBack={() => setPanel(null)} />;
 
-  const mine = (player) => player.userId === userId;
+  const mine = (player) => Boolean(player?.userId) && player.userId === userId;
+  const seatOf = (id) => view.players.find((p) => p.id === id);
   const canSelfAdd = (player) => view.buyInMode === 'self_add' && !view.ended && mine(player);
   const missing = view.players.filter((p) => !(p.id in view.finals)).length;
 
@@ -172,6 +177,17 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         tableName={view.name}
         date={view.endedAt}
         notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
+        stored={view.transfers}
+        canMark={(row) => view.canManage || mine(seatOf(row.from)) || mine(seatOf(row.to))}
+        onTogglePaid={(row, paid) => actions.setPaid(row.id, paid).catch(fail)}
+        phoneFor={(row) => (row.amount > row.cash && mine(seatOf(row.from)) ? view.phones[seatOf(row.to)?.userId] ?? null : null)}
+        onBit={(row, phone) => {
+          // Copy first (still inside the tap), then open Bit.
+          copyText(phone).then((ok) =>
+            showToast(ok ? `המספר הועתק · ${formatShekel(row.amount - row.cash)} – הדבק בביט` : `לא הצלחנו להעתיק: ${formatPhone(phone)}`)
+          );
+          openBit();
+        }}
       >
         <button type="button" onClick={onHome} className={`${BIG_BUTTON} bg-slate-800 text-slate-100`}>
           חזרה למסך הבית
@@ -208,8 +224,15 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
           missing={missing}
           onClose={async () => {
             try {
-              // The same whole-shekel results everyone will see; the database checks they add up to 0.
-              await actions.endGame(settle(entries, { unit: view.settings.rounding }).nets);
+              // Exactly what this screen shows: the whole-shekel results and who pays whom.
+              // The database checks the results add up to 0 and the transfers match them.
+              const { nets, transfers } = settle(entries, {
+                unit: view.settings.rounding,
+                cash: view.cash,
+                absent,
+                manager: managerSeat,
+              });
+              await actions.endGame(nets, transfers);
               showToast('השולחן נסגר – התוצאות נשמרו 🎉');
             } catch (e) {
               fail(e);

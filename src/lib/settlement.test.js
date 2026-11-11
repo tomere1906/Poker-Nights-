@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TRANSFER, ROUNDING_UNITS, cashParts, cashRoom, roundNets, roundTo, settle, splitUnfitBills } from './settlement.js';
+import { MIN_TRANSFER, ROUNDING_UNITS, cashParts, cashRoom, roundNets, roundTo, settle, splitUnfitBills, transferProblems } from './settlement.js';
 
 const entries = (obj) => Object.entries(obj).map(([id, net]) => ({ id, net }));
 
@@ -469,5 +469,58 @@ describe('cash paid when settling', () => {
       expectRows(result);
       expect(result.transfers.every((r) => Number.isInteger(r.amount) && r.amount > 0)).toBe(true);
     }
+  });
+});
+
+describe('transferProblems (the check the database runs when closing a table)', () => {
+  it('accepts the transfers settle() makes, on thousands of random nights', () => {
+    let seed = 1234;
+    const rand = (n) => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed % n;
+    };
+    for (let round = 0; round < 3000; round++) {
+      const ids = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'].slice(0, 2 + rand(8));
+      const list = ids.map((id) => ({ id, net: (rand(120) - 60) * 5 + (rand(4) === 0 ? 2.5 : 0) }));
+      list[0].net -= list.reduce((s, e) => s + e.net, 0);
+      const cash = list
+        .filter((e) => e.net < 0 && rand(3))
+        .flatMap((e) => Array.from({ length: 1 + rand(3) }, () => ({ from: e.id, amount: [20, 50, 100, 200][rand(4)] })));
+      // Like the forms: never more cash than the loss.
+      const room = new Map(list.map((e) => [e.id, Math.max(0, -Math.round(e.net))]));
+      const allowed = cash.filter((c) => {
+        if (c.amount > room.get(c.from)) return false;
+        room.set(c.from, room.get(c.from) - c.amount);
+        return true;
+      });
+      const absent = ids.filter(() => rand(3) === 0);
+      const manager = rand(2) ? ids[rand(ids.length)] : null;
+      const unit = ROUNDING_UNITS[rand(4)];
+      const { nets, transfers } = settle(list, { unit, cash: allowed, absent, manager });
+      expect(transferProblems(nets, transfers, allowed)).toEqual([]);
+    }
+  });
+
+  it('refuses made-up transfers', () => {
+    const nets = [
+      { id: 'm', net: 100 },
+      { id: 'p', net: -100 },
+      { id: 'c', net: -50 },
+      { id: 'q', net: 50 },
+    ];
+    const cash = [{ from: 'c', amount: 50 }];
+    const real = [
+      { from: 'p', to: 'm', amount: 100, cash: 0 },
+      { from: 'c', to: 'q', amount: 50, cash: 50 },
+    ];
+    expect(transferProblems(nets, real, cash)).toEqual([]);
+    // Doesn't add up.
+    expect(transferProblems(nets, [{ ...real[0], amount: 60 }, real[1]], cash)).not.toEqual([]);
+    // A bank transfer to a loser (a loop to reach someone's phone).
+    expect(
+      transferProblems(nets, [real[0], { ...real[1], amount: 70 }, { from: 'q', to: 'c', amount: 20, cash: 0 }], cash)
+    ).toContain('c');
+    // More cash than was recorded.
+    expect(transferProblems(nets, [{ ...real[0], cash: 100 }, real[1]], cash)).toContain('p');
   });
 });

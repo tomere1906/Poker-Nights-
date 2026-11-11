@@ -277,6 +277,29 @@ export function cashParts(row) {
   return { cash: Math.min(row.cash, row.amount), transfer: Math.max(0, row.amount - row.cash) };
 }
 
+// The same check the database runs when a table is closed with its transfers
+// (private.transfers_valid): every player receives − pays exactly their net,
+// the bank-transfer part of a row goes only to a winner and never more than
+// their win, and nobody pays more cash than was recorded for them.
+// Returns the ids of players that break it ([] = fine).
+export function transferProblems(nets, transfers, cash = []) {
+  const recorded = new Map();
+  for (const c of cash) recorded.set(c.from, (recorded.get(c.from) ?? 0) + c.amount);
+  const flow = new Map(nets.map((e) => [e.id, { net: e.net, balance: 0, byTransfer: 0, cash: 0 }]));
+  for (const t of transfers) {
+    const from = flow.get(t.from);
+    const to = flow.get(t.to);
+    if (!from || !to || t.from === t.to) return [t.from, t.to];
+    from.balance -= t.amount;
+    from.cash += t.cash ?? 0;
+    to.balance += t.amount;
+    to.byTransfer += t.amount - (t.cash ?? 0);
+  }
+  return [...flow]
+    .filter(([id, f]) => f.balance !== f.net || f.byTransfer > Math.max(0, f.net) || f.cash > (recorded.get(id) ?? 0))
+    .map(([id]) => id);
+}
+
 // One line per payer: [{ from, amount }], biggest first.
 export function cashByPayer(cash) {
   const total = new Map();
