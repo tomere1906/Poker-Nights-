@@ -12,6 +12,8 @@ import { openBit } from '../lib/bit.js';
 import { copyText } from '../lib/clipboard.js';
 import { formatShekel } from '../lib/format.js';
 import { formatPhone } from '../lib/phone.js';
+import { saveMyPhone } from '../lib/auth.js';
+import PhonePrompt from './PhonePrompt.jsx';
 import { CardsIcon } from './Icons.jsx';
 
 const HEADER_BUTTON = 'rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 active:scale-95';
@@ -72,7 +74,35 @@ function ReopenButton({ onReopen }) {
 // in "כל אחד את שלו" mode add buy-ins for themselves). At the end: managers
 // enter results, the manager closes the table, everyone sees who pays whom.
 export default function OnlineTable({ tableId, userId, onHome, showToast, onCelebrate }) {
-  const { view, error, loading, live, actions } = useOnlineTable(tableId, userId);
+  const { view, error, loading, live, actions, refresh } = useOnlineTable(tableId, userId);
+  // "לא עכשיו" on the phone card: hidden for this table (on this device).
+  const dismissKey = `poker-nights-phone-later:${tableId}`;
+  const [phoneLater, setPhoneLater] = useState(() => {
+    try {
+      return localStorage.getItem(dismissKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  // On a closed table, which stored rows I pay by transfer to someone whose number I
+  // can't see yet. A number saved later isn't in the change log (it's private),
+  // so while I wait for one, check again every 10 seconds.
+  const waitingForPhone = useMemo(() => {
+    if (!view?.ended) return false;
+    const seat = new Map(view.players.map((p) => [p.id, p]));
+    return view.transfers.some((t) => {
+      const to = seat.get(t.to);
+      return t.amount > t.cash && seat.get(t.from)?.userId === userId && to?.userId && !view.phones[to.userId];
+    });
+  }, [view, userId]);
+  useEffect(() => {
+    if (!waitingForPhone) return undefined;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [waitingForPhone, refresh]);
   const [panel, setPanel] = useState(null); // null | 'log' | 'manage' | 'invite'
   const [step, setStep] = useState('table'); // 'table' | 'end' | 'settle' (managers, before closing)
   const fail = (e) => showToast(`הפעולה נכשלה: ${e.message ?? e}`);
@@ -164,6 +194,10 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
   const canSelfAdd = (player) => view.buyInMode === 'self_add' && !view.ended && mine(player);
   const missing = view.players.filter((p) => !(p.id in view.finals)).length;
 
+  // A winner who gets at least one transfer (not only cash) and has no number saved.
+  const askPhone =
+    view.ended && !phoneLater && !view.phones[userId] && view.transfers.some((t) => t.amount > t.cash && mine(seatOf(t.to)));
+
   let body;
   if (view.ended) {
     body = (
@@ -176,7 +210,28 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         manager={managerSeat}
         tableName={view.name}
         date={view.endedAt}
-        notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
+        notice={
+          <>
+            <p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>
+            {askPhone && (
+              <PhonePrompt
+                onSave={async (phone) => {
+                  await saveMyPhone(userId, phone);
+                  await refresh();
+                  showToast('המספר נשמר ✓ מי שמעביר לך יראה את כפתור הביט');
+                }}
+                onLater={() => {
+                  try {
+                    localStorage.setItem(dismissKey, '1');
+                  } catch {
+                    // Private mode: hidden until the page reloads.
+                  }
+                  setPhoneLater(true);
+                }}
+              />
+            )}
+          </>
+        }
         stored={view.transfers}
         canMark={(row) => view.canManage || mine(seatOf(row.from)) || mine(seatOf(row.to))}
         onTogglePaid={(row, paid) => actions.setPaid(row.id, paid).catch(fail)}
