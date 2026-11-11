@@ -6,6 +6,7 @@ export default function AmountInput({ value, onChange, placeholder = 'סכום �
       <input
         type="text"
         inputMode="numeric"
+        autoComplete="off"
         autoFocus={autoFocus}
         value={value || ''}
         onChange={(e) => onChange(parseAmount(e.target.value))}

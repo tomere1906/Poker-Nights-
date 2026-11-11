@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_CHIP_VALUE, EXITS, chipsToShekels, shekelsToChips, timesOf, totalIn } from '../lib/game.js';
-import { formatCount, formatShekel, formatTime } from '../lib/format.js';
+import { DEFAULT_CHIP_VALUE, EXITS, timesOf, totalIn } from '../lib/game.js';
+import { formatShekel, formatTime } from '../lib/format.js';
 import { PALETTE } from '../lib/colors.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
 import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
 import CashForm from './CashForm.jsx';
+import ResultField from './ResultField.jsx';
 
 function buyInCountLabel(count) {
   if (count === 0) return 'אין קניות';
@@ -27,6 +28,10 @@ function IdentityEditor({ player, onSave }) {
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
+        name="table-label"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
         maxLength={30}
         className="w-full rounded-xl bg-slate-950/60 px-3 py-2.5 text-lg outline-none ring-2 ring-transparent focus:ring-emerald-400"
       />
@@ -76,13 +81,9 @@ const EXIT_TILE =
 function ExitPicker({ player, chipValue, current = null, onPick, onCancel }) {
   const box = useRef(null);
   const [typing, setTyping] = useState(current?.kind === 'amount');
-  const canCount = chipValue !== DEFAULT_CHIP_VALUE;
-  const [unit, setUnit] = useState(canCount ? 'chips' : 'shekels');
-  const [amount, setAmount] = useState(() =>
-    current?.kind === 'amount' ? (canCount ? shekelsToChips(current.chips, chipValue) : current.chips) : 0
-  );
-  const counting = unit === 'chips';
-  const shekels = counting ? chipsToShekels(amount, chipValue) : amount;
+  // Told as chips, ₪ in hand, or profit/loss (ResultField); kept as the ₪ they leave with.
+  const [unit, setUnit] = useState(chipValue !== DEFAULT_CHIP_VALUE ? 'chips' : 'shekels');
+  const [shekels, setShekels] = useState(current?.kind === 'amount' ? current.chips : null);
 
   // Opened from the bottom of the sheet: bring all three options into view.
   useEffect(() => {
@@ -119,51 +120,27 @@ function ExitPicker({ player, chipValue, current = null, onPick, onCancel }) {
           className="space-y-2"
           onSubmit={(e) => {
             e.preventDefault();
-            onPick('amount', shekels);
+            if (shekels !== null) onPick('amount', shekels);
           }}
         >
-          {canCount && (
-            <div className="flex gap-1 rounded-2xl bg-slate-950/50 p-1" role="group" aria-label="הסכום ב">
-              {[
-                ['chips', 'צ׳יפים'],
-                ['shekels', '₪ שקלים'],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={unit === value}
-                  onClick={() => {
-                    // Keep the same money when switching units.
-                    setAmount((a) => (value === 'chips' ? shekelsToChips(shekels, chipValue) : shekels));
-                    setUnit(value);
-                  }}
-                  className={`flex-1 rounded-xl py-2 text-sm font-bold transition ${
-                    unit === value ? 'bg-emerald-400 text-slate-900' : 'text-slate-300'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <AmountInput
-                value={amount}
-                onChange={setAmount}
-                placeholder={counting ? 'כמה צ׳יפים' : 'יצא עם'}
-                suffix={counting ? '' : '₪'}
-                autoFocus
-              />
-            </div>
-            <button type="submit" className="rounded-2xl bg-emerald-400 px-5 font-bold text-slate-900 active:scale-95">
-              אישור
-            </button>
-          </div>
-          <p className="text-sm text-slate-400">
-            {counting && amount > 0 && <b className="text-slate-200">{formatCount(amount)} צ׳יפים = {formatShekel(shekels)} · </b>}
-            נכנס {formatShekel(totalIn(player))} · כל סכום אפשרי, גם יותר וגם פחות
-          </p>
+          <ResultField
+            totalIn={totalIn(player)}
+            chipValue={chipValue}
+            shekels={shekels}
+            onChange={setShekels}
+            unit={unit}
+            onUnit={setUnit}
+            autoFocus
+            enterKeyHint="done"
+          />
+          <button
+            type="submit"
+            disabled={shekels === null}
+            className="w-full rounded-2xl bg-emerald-400 py-3 font-bold text-slate-900 active:scale-95 disabled:opacity-40"
+          >
+            אישור{shekels !== null && ` · יצא עם ${formatShekel(shekels)}`}
+          </button>
+          <p className="text-xs text-slate-500">נכנס {formatShekel(totalIn(player))} · כל סכום אפשרי, גם יותר וגם פחות</p>
         </form>
       )}
       {onCancel && (

@@ -5,11 +5,13 @@ import { PALETTE, firstFreeColor } from '../lib/colors.js';
 import BottomSheet from './BottomSheet.jsx';
 import AmountInput from './AmountInput.jsx';
 import Avatar from './Avatar.jsx';
+import { initials } from '../lib/game.js';
 
 // people: signed-in users at the table who aren't seated yet (online tables).
 // Picking one seats their account; otherwise a guest is added by name.
 // usedColors: colors already at the table; a free one is preselected.
-export default function AddPlayerSheet({ settings, people = [], usedColors = [], onAdd, onClose }) {
+// colorOwners: { color: name } so a taken color shows whose it is.
+export default function AddPlayerSheet({ settings, people = [], usedColors = [], colorOwners = {}, onAdd, onClose }) {
   // The table's initial buy-in comes first (and is preselected); latecomers
   // who enter with more can pick a re-buy amount or type their own.
   const others = settings.rebuyAmounts.filter((a) => a !== settings.initialBuyIn);
@@ -64,6 +66,12 @@ export default function AddPlayerSheet({ settings, people = [], usedColors = [],
           value={person ? '' : name}
           disabled={Boolean(person)}
           onChange={(e) => setName(e.target.value)}
+          // A guest's name, not the phone owner's: no contact autofill.
+          name="guest-label"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="done"
           placeholder={person ? `נבחר: ${person.name}` : 'שם השחקן'}
           maxLength={20}
           className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-lg outline-none ring-2 ring-transparent placeholder:text-slate-500 focus:ring-emerald-400 disabled:opacity-60"
@@ -78,13 +86,25 @@ export default function AddPlayerSheet({ settings, people = [], usedColors = [],
                   key={c.name}
                   type="button"
                   onClick={() => setColor(i)}
-                  aria-label={`${c.name}${taken ? ' (תפוס)' : ''}`}
+                  aria-label={`${c.name}${taken ? ` (תפוס${colorOwners[i] ? ` – ${colorOwners[i]}` : ''})` : ''}`}
                   aria-pressed={color === i}
                   className={`relative h-10 rounded-xl bg-gradient-to-br ${c.gradient} transition active:scale-90 ${
-                    color === i ? 'ring-[3px] ring-white' : taken ? 'opacity-25' : 'opacity-80'
+                    color === i ? 'ring-[3px] ring-white' : taken ? 'opacity-45 saturate-50' : 'opacity-90'
                   }`}
                 >
-                  {color === i && <span className={`text-lg font-extrabold ${c.text}`}>✓</span>}
+                  {color === i ? (
+                    <span className={`text-lg font-extrabold ${c.text}`}>✓</span>
+                  ) : (
+                    taken && (
+                      // Taken: whose it is, and a small ✕ in the corner.
+                      <>
+                        <span className={`text-sm font-extrabold ${c.text}`}>{colorOwners[i] ? initials(colorOwners[i]) : ''}</span>
+                        <span className="absolute -end-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-slate-950 text-[9px] font-bold text-slate-300 ring-1 ring-white/20">
+                          ✕
+                        </span>
+                      </>
+                    )
+                  )}
                 </button>
               );
             })}

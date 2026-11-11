@@ -180,6 +180,7 @@ export default function TableScreen({
           settings={settings}
           people={people}
           usedColors={players.map((p) => p.color)}
+          colorOwners={Object.fromEntries(players.map((p) => [p.color, p.name]))}
           onClose={close}
           onAdd={({ name, amount, color, userId }) => {
             close();
