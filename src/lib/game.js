@@ -82,11 +82,17 @@ export function cleanSettings(settings) {
 
 // How a player left mid-game. The same labels and icons as the quick results on
 // the end-game screen; the icon replaces the player's initials while they're out.
+// A player who left gives up their seat (seat: null) and is shown next to the table.
 export const EXITS = {
   lost_all: { icon: '💀', label: 'הפסיד הכל' },
   even: { icon: '🤝', label: 'מאוזן' },
-  amount: { icon: '💰', label: 'יצא עם סכום' },
+  amount: { icon: '🚪', label: 'יצא עם סכום' },
 };
+
+// Players sitting at the table (not those who left mid-game).
+export function seatedPlayers(players) {
+  return players.filter((p) => !p.out);
+}
 
 // The chips a player leaves with for each exit kind (`amount` is typed in).
 export function exitChips(player, kind, amount = 0) {
@@ -131,8 +137,14 @@ export function netOf(state, player) {
   return state.endMode === 'chips' ? value - totalIn(player) : value;
 }
 
+// Game on: the seated players take seats 0..n-1 in their order; those who left have none.
 function compactSeats(players) {
-  return [...players].sort((a, b) => a.seat - b.seat).map((p, i) => ({ ...p, seat: i }));
+  const order = new Map(
+    seatedPlayers(players)
+      .sort((a, b) => a.seat - b.seat)
+      .map((p, i) => [p.id, i])
+  );
+  return players.map((p) => ({ ...p, seat: order.get(p.id) ?? null }));
 }
 
 export function firstFreeSeat(players) {
@@ -194,8 +206,9 @@ export function gameReducer(state, action) {
     case 'addPlayer': {
       // Game on: position is the seat the new player takes; players from there on shift by one.
       const { name, amount } = action;
-      if (state.players.length >= MAX_PLAYERS) return state;
-      const position = Math.min(Math.max(action.position, 0), state.players.length);
+      const seated = seatedPlayers(state.players).length;
+      if (seated >= MAX_PLAYERS) return state;
+      const position = Math.min(Math.max(action.position, 0), seated);
       const shifted = state.players.map((p) => (p.seat >= position ? { ...p, seat: p.seat + 1 } : p));
       return { ...state, players: [...shifted, newPlayer(state, name, position, amount, action.at, action.color)] };
     }
@@ -232,23 +245,30 @@ export function gameReducer(state, action) {
       };
     }
     case 'markOut': {
-      // The player keeps their seat; what they left with becomes their final result.
+      // The player gives up their seat (the others close the gap) and stays in the
+      // results; what they left with becomes their final result.
       const player = state.players.find((p) => p.id === action.id);
-      if (!player || !EXITS[action.kind]) return state;
+      if (!player || player.out || !EXITS[action.kind]) return state;
       const chips = exitChips(player, action.kind, action.chips);
       return {
         ...state,
-        players: state.players.map((p) => (p.id === action.id ? { ...p, out: { kind: action.kind, chips } } : p)),
+        players: state.players.map((p) => {
+          if (p.id === action.id) return { ...p, out: { kind: action.kind, chips }, seat: null };
+          return !p.out && p.seat > player.seat ? { ...p, seat: p.seat - 1 } : p;
+        }),
         finals: { ...state.finals, [action.id]: state.endMode === 'chips' ? chips : chips - totalIn(player) },
       };
     }
     case 'markBack': {
-      // Back in the game: no exit, no result yet.
+      // Back in the game at the end of the table (if there's a free seat): no exit, no result yet.
+      const player = state.players.find((p) => p.id === action.id);
+      const seated = seatedPlayers(state.players).length;
+      if (!player?.out || seated >= MAX_PLAYERS) return state;
       const { [action.id]: _, ...finals } = state.finals;
       return {
         ...state,
         finals,
-        players: state.players.map((p) => (p.id === action.id ? { ...p, out: null } : p)),
+        players: state.players.map((p) => (p.id === action.id ? { ...p, out: null, seat: seated } : p)),
       };
     }
     case 'addCash': {
@@ -271,12 +291,12 @@ export function gameReducer(state, action) {
     case 'moveSeat': {
       // Dropping onto another player swaps the two; onto an empty seat just moves.
       const mover = state.players.find((p) => p.id === action.id);
-      if (!mover || mover.seat === action.seat) return state;
+      if (!mover || mover.out || mover.seat === action.seat) return state;
       return {
         ...state,
         players: state.players.map((p) => {
           if (p.id === mover.id) return { ...p, seat: action.seat };
-          if (p.seat === action.seat) return { ...p, seat: mover.seat };
+          if (!p.out && p.seat === action.seat) return { ...p, seat: mover.seat };
           return p;
         }),
       };

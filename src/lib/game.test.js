@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SETTINGS,
+  EXITS,
   MAX_PLAYERS,
+  seatedPlayers,
   isLegacyGame,
   chipsToShekels,
   cleanChipValue,
@@ -360,6 +362,56 @@ describe('cash paid during the night', () => {
   });
 });
 
+describe('leaving mid-game frees the seat', () => {
+  const full = () => {
+    let s = started;
+    for (let i = 0; i < MAX_PLAYERS; i++) s = add(s, 'p' + i, i, 50);
+    return s;
+  };
+  const named = (s, name) => s.players.find((p) => p.name === name);
+
+  it('a full table gets room for a new player when someone leaves', () => {
+    let s = full();
+    expect(add(s, 'חדש', 3, 50).players).toHaveLength(MAX_PLAYERS); // full: refused
+    s = gameReducer(s, { type: 'markOut', id: named(s, 'p3').id, kind: 'lost_all' });
+    expect(seatedPlayers(s.players)).toHaveLength(MAX_PLAYERS - 1);
+    s = add(s, 'חדש', 3, 50);
+    expect(s.players).toHaveLength(MAX_PLAYERS + 1);
+    // Seated players hold seats 0..8 with no gaps; the one who left has none and stays in the game.
+    expect(seatedPlayers(s.players).map((p) => p.seat).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(named(s, 'p3').seat).toBeNull();
+    expect(s.finals[named(s, 'p3').id]).toBe(-50);
+  });
+
+  it('"חזר לשחק" needs a free seat', () => {
+    let s = full();
+    const p3 = named(s, 'p3').id;
+    s = gameReducer(s, { type: 'markOut', id: p3, kind: 'even' });
+    s = add(s, 'חדש', 0, 50);
+    expect(gameReducer(s, { type: 'markBack', id: p3 })).toBe(s); // table full: nothing happens
+    s = gameReducer(s, { type: 'markOut', id: named(s, 'חדש').id, kind: 'lost_all' });
+    s = gameReducer(s, { type: 'markBack', id: p3 });
+    expect(s.players.find((p) => p.id === p3)).toMatchObject({ out: null, seat: MAX_PLAYERS - 1 });
+  });
+
+  it('old saves: players who left give up their seat and the rest close the gap', () => {
+    const s = normalizeState({
+      started: true,
+      tableOpen: true,
+      players: [
+        { id: 'a', name: 'א', seat: 0, color: 0, buyIns: [50] },
+        { id: 'b', name: 'ב', seat: 1, color: 1, buyIns: [50], out: { kind: 'lost_all', chips: 0 } },
+        { id: 'c', name: 'ג', seat: 2, color: 2, buyIns: [50] },
+      ],
+    });
+    expect(s.players.map((p) => p.seat)).toEqual([0, null, 1]);
+  });
+
+  it('the exit with an amount shows a door', () => {
+    expect(EXITS.amount.icon).toBe('🚪');
+  });
+});
+
 describe('leaving mid-game', () => {
   const game = (mode = 'net') => {
     let s = { ...add(add(started, 'א', 0, 100), 'ב', 1, 50), endMode: mode };
@@ -387,13 +439,17 @@ describe('leaving mid-game', () => {
     expect(netOf(gameReducer(s, { type: 'setEndMode', mode: 'chips' }), s.players[0])).toBe(60);
   });
 
-  it('stays in the seat, gets no buy-ins while out, and "חזר לשחק" undoes it', () => {
+  it('frees the seat, gets no buy-ins while out, and "חזר לשחק" undoes it', () => {
     let s = out(game(), 'lost_all');
-    expect(s.players[0].seat).toBe(0);
+    // The seat is free and the player after him moved up.
+    expect(s.players[0].seat).toBeNull();
+    expect(s.players[1].seat).toBe(0);
     s = gameReducer(s, { type: 'addBuyIn', id: s.players[0].id, amount: 50 });
     expect(totalIn(s.players[0])).toBe(200);
     s = gameReducer(s, { type: 'markBack', id: s.players[0].id });
     expect(s.players[0].out).toBeNull();
+    // Back at the end of the table.
+    expect(s.players[0].seat).toBe(1);
     expect(s.finals).toEqual({});
     s = gameReducer(s, { type: 'addBuyIn', id: s.players[0].id, amount: 50 });
     expect(totalIn(s.players[0])).toBe(250);

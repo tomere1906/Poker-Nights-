@@ -11,6 +11,7 @@
 --         T5: table name, players leaving mid-game (exits), ending the game (end_game), ended = locked
 --         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot; 410+: chip value and "לא כאן"; 430+: hidden characters in names
 --         T6 (450+): stored transfers, phone numbers for Bit (who may see them), "שולם ✓" marks
+--         T7 (516+): a player who leaves mid-game gives up their seat
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -495,6 +496,25 @@ begin
       (506, 'An old-style close (no transfers) still works',         'M', $$select public.end_game('76767676-7676-4676-8676-767676767676', '{"76000000-0000-4000-8000-000000000001": 100, "76000000-0000-4000-8000-000000000002": -100, "76000000-0000-4000-8000-000000000003": -50, "76000000-0000-4000-8000-000000000004": 50}')$$, 'ok'),
       (507, '…and shows no phones',                                  'P', $$select count(*) from public.profile_phones where user_id <> '22222222-2222-4222-8222-222222222222'$$, 'count:0'),
       (508, 'P deletes his own phone',                               'P', $$delete from public.profile_phones where user_id = '22222222-2222-4222-8222-222222222222'$$, 'rows:1'),
+
+      -- ---------------- T7: a player who leaves gives up their seat ----------------
+      -- M manages T7: M, P, C, Q in seats 0-3, game on. P leaves; a guest takes his seat; P comes back elsewhere.
+      (516, 'M opens T7',                                            'M', $$insert into public.poker_tables (id, invite_code) values ('77777777-7777-4777-8777-777777777777', 'code-t7')$$, 'ok'),
+      (517, 'P joins T7',                                            'P', $$insert into public.table_members (table_id, invite_code) values ('77777777-7777-4777-8777-777777777777', 'code-t7')$$, 'ok'),
+      (518, 'C joins T7',                                           'C', $$insert into public.table_members (table_id, invite_code) values ('77777777-7777-4777-8777-777777777777', 'code-t7')$$, 'ok'),
+      (519, 'Q joins T7',                                           'Q', $$insert into public.table_members (table_id, invite_code) values ('77777777-7777-4777-8777-777777777777', 'code-t7')$$, 'ok'),
+      (522, 'M seats M, P, C, Q in seats 0-3',                       'M', $$insert into public.table_players (id, table_id, user_id, seat) values ('77000000-0000-4000-8000-000000000001', '77777777-7777-4777-8777-777777777777', '11111111-1111-4111-8111-111111111111', 0), ('77000000-0000-4000-8000-000000000002', '77777777-7777-4777-8777-777777777777', '22222222-2222-4222-8222-222222222222', 1), ('77000000-0000-4000-8000-000000000003', '77777777-7777-4777-8777-777777777777', '55555555-5555-4555-8555-555555555555', 2), ('77000000-0000-4000-8000-000000000004', '77777777-7777-4777-8777-777777777777', '44444444-4444-4444-8444-444444444444', 3)$$, 'ok'),
+      (523, 'M starts the game',                                     'M', $$update public.poker_tables set status = 'playing' where id = '77777777-7777-4777-8777-777777777777'$$, 'rows:1'),
+      (524, 'P leaves ("הפסיד הכל") and gives up seat 1',            'M', $$update public.table_players set out_kind = 'lost_all', out_chips = 0, seat = null where id = '77000000-0000-4000-8000-000000000002'$$, 'rows:1'),
+      (525, 'A player who is still playing always has a seat',      'M', $$update public.table_players set seat = null where id = '77000000-0000-4000-8000-000000000003'$$, 'error:23514'),
+      (526, 'A new player (guest) takes the free seat 1',            'M', $$insert into public.table_players (table_id, nickname, color, seat) values ('77777777-7777-4777-8777-777777777777', 'חדש', 4, 1)$$, 'ok'),
+      (527, 'Leaving is logged as an exit, not as a seat move',      'P', $$select (select count(*) from public.table_log where table_id = '77777777-7777-4777-8777-777777777777' and action = 'player_out' and details ->> 'player_id' = '77000000-0000-4000-8000-000000000002') * 10 + (select count(*) from public.table_log where table_id = '77777777-7777-4777-8777-777777777777' and action = 'player_moved')$$, 'count:10'),
+      (528, 'P can''t take a seat back by himself',                  'P', $$update public.table_players set out_kind = null, out_chips = null, seat = 4 where id = '77000000-0000-4000-8000-000000000002'$$, 'rows:0'),
+      (529, 'Coming back needs a seat',                              'M', $$update public.table_players set out_kind = null, out_chips = null where id = '77000000-0000-4000-8000-000000000002'$$, 'error:23514'),
+      (530, 'Coming back can''t take a seat that''s taken',          'M', $$update public.table_players set out_kind = null, out_chips = null, seat = 1 where id = '77000000-0000-4000-8000-000000000002'$$, 'error:23505'),
+      (531, 'M brings P back in the free seat 4',                    'M', $$update public.table_players set out_kind = null, out_chips = null, seat = 4 where id = '77000000-0000-4000-8000-000000000002'$$, 'rows:1'),
+      (532, '…logged as back in the game',                           'C', $$select count(*) from public.table_log where table_id = '77777777-7777-4777-8777-777777777777' and action = 'player_back' and details ->> 'player_id' = '77000000-0000-4000-8000-000000000002'$$, 'count:1'),
+      (533, 'A member can''t seat himself with no seat',             'S', $$insert into public.table_players (table_id, user_id, seat) values ('77777777-7777-4777-8777-777777777777', '33333333-3333-4333-8333-333333333333', null)$$, 'deny'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 10 tables',          'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments','settlement_transfers','profile_phones') and rowsecurity$$, 'count:10'),

@@ -69,11 +69,14 @@ const EXIT_BUTTON =
   'flex w-full items-center gap-3 rounded-2xl bg-slate-950/50 p-3 text-start font-bold ring-1 ring-white/10 transition active:scale-[0.98]';
 
 // "יצא מהמשחק": lost everything, left even, or left with a typed amount.
-// When a chip isn't worth 1 ₪, the typed amount is a chip count, converted to ₪.
+// When a chip isn't worth 1 ₪ the manager types either a chip count (converted
+// by the chip value) or ₪; the exit is always stored in ₪.
 function ExitPicker({ player, chipValue, onPick }) {
   const [typing, setTyping] = useState(false);
   const [amount, setAmount] = useState(0);
-  const counting = chipValue !== DEFAULT_CHIP_VALUE;
+  const canCount = chipValue !== DEFAULT_CHIP_VALUE;
+  const [unit, setUnit] = useState(canCount ? 'chips' : 'shekels');
+  const counting = unit === 'chips';
   const shekels = counting ? chipsToShekels(amount, chipValue) : amount;
   return (
     <div className="animate-fade-in mb-5 space-y-2 rounded-2xl bg-slate-800/70 p-3">
@@ -90,12 +93,32 @@ function ExitPicker({ player, chipValue, onPick }) {
       </button>
       {typing ? (
         <form
-          className="flex gap-2"
+          className="flex flex-wrap gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             onPick('amount', shekels);
           }}
         >
+          {canCount && (
+            <div className="flex w-full gap-1 rounded-2xl bg-slate-950/50 p-1" role="group" aria-label="הסכום ב">
+              {[
+                ['chips', 'צ׳יפים'],
+                ['shekels', '₪ שקלים'],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={unit === value}
+                  onClick={() => setUnit(value)}
+                  className={`flex-1 rounded-xl py-2 text-sm font-bold transition ${
+                    unit === value ? 'bg-emerald-400 text-slate-900' : 'text-slate-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex-1">
             <AmountInput
               value={amount}

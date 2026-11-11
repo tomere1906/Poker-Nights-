@@ -3,7 +3,7 @@ import { paletteColor, suggestedColor } from '../lib/colors.js';
 
 // The one avatar used everywhere (table seats, sheets, profile, start screen):
 // a circle filled with the player's color and up to 2 initials. A player who
-// left mid-game shows how they left (💀 / 🤝 / 💰) instead of the initials.
+// left mid-game shows how they left (💀 / 🤝 / 🚪) instead of the initials.
 export default function Avatar({ player, size = 'h-12 w-12 text-lg' }) {
   const color = paletteColor(player.color);
   const exit = player.out && EXITS[player.out.kind];

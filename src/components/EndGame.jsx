@@ -126,7 +126,8 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
   const [drafts, setDrafts] = useState({});
   const inputs = useRef({});
 
-  const ordered = [...players].sort((a, b) => a.seat - b.seat);
+  // Seat order; players who left mid-game (no seat) last.
+  const ordered = [...players].sort((a, b) => (a.seat ?? 99) - (b.seat ?? 99));
   const nets = players.map((p) => netOf(state, p));
   const missing = nets.filter((n) => n === null).length;
   const diff = nets.reduce((sum, n) => sum + (n ?? 0), 0);

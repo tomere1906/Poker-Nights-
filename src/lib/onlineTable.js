@@ -3,7 +3,7 @@
 // each user may actually do; the UI only hides what would be refused anyway.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './supabase.js';
-import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChips, firstFreeSeat, totalIn } from './game.js';
+import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChips, firstFreeSeat, seatedPlayers, totalIn } from './game.js';
 import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
 
@@ -213,7 +213,7 @@ export function toView(raw, userId) {
     isManager,
     canManage,
     // A player who joined by invite and isn't seated yet picks their own free seat.
-    canSeatSelf: !canManage && !ended && !seated.has(userId) && players.length < MAX_PLAYERS,
+    canSeatSelf: !canManage && !ended && !seated.has(userId) && seatedPlayers(players).length < MAX_PLAYERS,
     myUserId: userId,
     // Cash paid into the pot (same shape as the local game's state.cash).
     cash: raw.cash.map((c) => ({ id: c.id, from: c.payer_id, amount: c.amount })),
@@ -235,7 +235,8 @@ export function toView(raw, userId) {
 // Writes. Each takes the current view (for seat math) and throws on failure.
 function makeActions(view) {
   const tableId = view.id;
-  const players = () => [...view.players].sort((a, b) => a.seat - b.seat);
+  // Players sitting at the table, in seat order (those who left have no seat).
+  const players = () => seatedPlayers(view.players).sort((a, b) => a.seat - b.seat);
 
   // One row per bill: each is an indivisible unit in the settlement.
   async function insertCash({ from, bills }) {
@@ -265,7 +266,9 @@ function makeActions(view) {
         if (target === null) throw new Error('השולחן מלא');
         return insertPlayer({ seat: target, name, amount, color, userId });
       }
-      const at = Math.min(Math.max(position ?? view.players.length, 0), view.players.length);
+      const count = players().length;
+      if (count >= MAX_PLAYERS) throw new Error('השולחן מלא');
+      const at = Math.min(Math.max(position ?? count, 0), count);
       for (const p of players().reverse()) if (p.seat >= at) await setSeat(p.id, p.seat + 1);
       return insertPlayer({ seat: at, name, amount, color, userId });
     },
@@ -273,7 +276,7 @@ function makeActions(view) {
     // A member takes their own seat: the tapped free seat, or (game on) the end of the table.
     // No buy-in here: in "רק מנהלים" mode only managers add buy-ins.
     async seatSelf(seat) {
-      const target = seat ?? (view.started ? view.players.length : firstFreeSeat(view.players));
+      const target = seat ?? (view.started ? players().length : firstFreeSeat(view.players));
       if (target === null) throw new Error('השולחן מלא');
       must(await supabase.from('table_players').insert({ table_id: tableId, user_id: view.myUserId, seat: target }));
     },
@@ -289,7 +292,7 @@ function makeActions(view) {
 
     async remove(player) {
       must(await supabase.from('table_players').delete().eq('id', player.id));
-      if (view.started) {
+      if (view.started && !player.out) {
         for (const p of players()) if (p.seat > player.seat) await setSeat(p.id, p.seat - 1);
       }
     },
@@ -325,11 +328,12 @@ function makeActions(view) {
       );
     },
 
-    // Left mid-game: the seat stays, the exit amount prefills the end-game screen.
-    // cash: { from, bills } left when leaving, or null.
+    // Left mid-game: the seat becomes free (the players after it close the gap),
+    // the exit amount (₪) prefills the end-game screen. cash: { from, bills } left when leaving, or null.
     async markOut(player, kind, amount, cash = null) {
-      const out = { out_kind: kind, out_chips: exitChips(player, kind, amount) };
+      const out = { out_kind: kind, out_chips: exitChips(player, kind, amount), seat: null };
       must(await supabase.from('table_players').update(out).eq('id', player.id));
+      for (const p of players()) if (p.seat > player.seat) await setSeat(p.id, p.seat - 1);
       if (cash) await insertCash(cash);
     },
 
@@ -348,11 +352,14 @@ function makeActions(view) {
     },
 
     // "חזר לשחק": no exit and no result yet.
+    // Back in the game at the end of the table, if a seat is free.
     async markBack(player) {
+      const seat = players().length;
+      if (seat >= MAX_PLAYERS) throw new Error('אין כיסא פנוי – מישהו צריך לפנות מקום קודם');
       must(
         await supabase
           .from('table_players')
-          .update({ out_kind: null, out_chips: null, final_value: null })
+          .update({ out_kind: null, out_chips: null, final_value: null, seat })
           .eq('id', player.id)
       );
     },
