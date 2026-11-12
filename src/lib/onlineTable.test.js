@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 // toView is pure; keep the Supabase client out of the test.
 vi.mock('./supabase.js', () => ({ supabase: null, isSupabaseConfigured: false }));
-const { toView, finalsFor, toChips, cleanTableName } = await import('./onlineTable.js');
+const { toView, finalsFor, toChips, cleanTableName, recentManagedGames } = await import('./onlineTable.js');
 
 const M = 'manager-id';
 const P = 'player-id';
@@ -95,6 +95,17 @@ describe('online results and exits', () => {
     expect(finalsFor(v.players, 'chips')).toEqual({ 'p-user': 120, 'p-guest': 0 });
   });
 
+  it('one source per player: for a player who left, the exit wins over a stale end-game value', () => {
+    const r = withResults();
+    r.players[0] = { ...r.players[0], final_value: 999 }; // an older value typed before he left
+    const v = toView(r, M);
+    const user = v.players.find((p) => p.id === 'p-user');
+    expect(user.finalChips).toBe(120);
+    expect(v.finals['p-user']).toBe(30);
+    // A seated player's result is the end-game value.
+    expect(v.players.find((p) => p.id === 'p-guest').finalChips).toBe(0);
+  });
+
   it('stores results as chips whatever the input mode', () => {
     const player = toView(withResults(), M).players.find((p) => p.id === 'p-user');
     expect(toChips(player, 30, 'net')).toBe(120);
@@ -109,9 +120,53 @@ describe('online results and exits', () => {
   });
 });
 
+describe('toView: settling', () => {
+  it('an ended game with no settled_at is still open for settling', () => {
+    const ended = { ...raw().table, status: 'ended', ended_at: '2026-11-12T20:00:00Z' };
+    expect(toView(raw({ table: { ...ended, settled_at: null } }), M).settling).toBe(true);
+    expect(toView(raw({ table: { ...ended, settled_at: '2026-11-12T21:00:00Z', settled_manually: true } }), M)).toMatchObject({
+      settling: false,
+      settledManually: true,
+    });
+    expect(toView(raw({ table: { ...raw().table, status: 'playing' } }), M).settling).toBe(false);
+  });
+});
+
 describe('toView: cash', () => {
   it('maps cash rows to the local shape', () => {
     const v = toView(raw({ cash: [{ id: 'c1', payer_id: 'p-guest', amount: 200 }] }), P);
     expect(v.cash).toEqual([{ id: 'c1', from: 'p-guest', amount: 200 }]);
+  });
+});
+
+describe('recentManagedGames', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z');
+  const daysAgo = (d) => new Date(now - d * 24 * 60 * 60 * 1000).toISOString();
+  const game = (id, over = {}) => ({
+    id, manager_id: M, status: 'ended', ended_at: daysAgo(1), settled_at: daysAgo(1), table_members: [], ...over,
+  });
+
+  it('lists closed games I managed in the last 30 days, newest first', () => {
+    const rows = [game('old', { ended_at: daysAgo(31) }), game('a', { ended_at: daysAgo(5) }), game('b', { ended_at: daysAgo(2) })];
+    expect(recentManagedGames(rows, M, now).map((t) => t.id)).toEqual(['b', 'a']);
+  });
+
+  it('includes co-managed games, never ones where I only played', () => {
+    const rows = [
+      game('co', { manager_id: 'x', table_members: [{ user_id: C, is_co_manager: true }] }),
+      game('played', { manager_id: 'x', table_members: [{ user_id: P, is_co_manager: false }] }),
+    ];
+    expect(recentManagedGames(rows, C, now).map((t) => t.id)).toEqual(['co']);
+    expect(recentManagedGames(rows, P, now)).toEqual([]);
+  });
+
+  it('leaves out the games I removed from the list', () => {
+    const rows = [game('a'), game('b', { ended_at: daysAgo(3) })];
+    expect(recentManagedGames(rows, M, now, ['a']).map((t) => t.id)).toEqual(['b']);
+  });
+
+  it('keeps games still open for settling, skips games still being played', () => {
+    const rows = [game('playing', { status: 'playing', ended_at: null, settled_at: null }), game('settling', { settled_at: null })];
+    expect(recentManagedGames(rows, M, now).map((t) => t.id)).toEqual(['settling']);
   });
 });

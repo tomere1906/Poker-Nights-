@@ -32,7 +32,7 @@ describe('describeLog: exits and table names', () => {
   it('describes exits with the end-game labels', () => {
     expect(say('player_out', { name: 'עידו', kind: 'lost_all', chips: 0 }, 'תומר')).toBe('תומר סימן שעידו יצא: הפסיד הכל 💀');
     expect(say('player_out', { name: 'עידו', kind: 'even', chips: 100 }, 'תומר')).toBe('תומר סימן שעידו יצא: מאוזן 🤝');
-    expect(say('player_out', { name: 'עידו', kind: 'amount', chips: 80 }, 'תומר')).toBe('תומר סימן שעידו יצא עם 80 ₪ 💰');
+    expect(say('player_out', { name: 'עידו', kind: 'amount', chips: 80 }, 'תומר')).toBe('תומר סימן שעידו יצא עם 80 ₪ 🚪');
     expect(say('player_back', { name: 'עידו' }, 'תומר')).toBe('תומר החזיר את עידו למשחק');
   });
 
@@ -46,6 +46,19 @@ describe('describeLog: exits and table names', () => {
     expect(say('presence_changed', { name: 'תומר', absent: false }, 'אסף')).toBe('אסף סימן שתומר כאן');
     expect(say('chip_value_changed', { old: 1, new: 0.5 }, 'תומר')).toContain('שווי הצ׳יפ');
     expect(say('chip_value_changed', { old: 1, new: 0.5 }, 'תומר')).toContain('0.5');
+  });
+
+  it('describes the settling closing by itself, by hand, and opening again', () => {
+    expect(say('game_settled', { manual: false }, 'עידו')).toBe('כולם שילמו ✓ ההתחשבנות נסגרה');
+    expect(say('game_settled', { manual: true }, 'אסף')).toBe('אסף סגר את ההתחשבנות');
+    expect(say('settling_reopened', { manual: false }, 'אסף')).toContain('נפתחה שוב');
+  });
+
+  it('describes "שולם ✓" marks, without any phone number', () => {
+    expect(say('transfer_paid', { name: 'עידו', to: 'תומר', amount: 150 }, 'עידו')).toBe('עידו סימן ששולם: עידו ← תומר 150 ₪ ✓');
+    expect(say('transfer_unpaid', { name: 'עידו', to: 'תומר', amount: 150 }, 'אסף')).toBe(
+      'אסף ביטל סימון תשלום: עידו ← תומר 150 ₪'
+    );
   });
 
   it('describes cash paid during the night', () => {

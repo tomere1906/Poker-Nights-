@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { potTotal } from '../lib/game.js';
-import { formatShekel } from '../lib/format.js';
+import { formatDate, formatShekel } from '../lib/format.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { listOpenTables } from '../lib/onlineTable.js';
 import { CardsIcon, ChipIcon } from './Icons.jsx';
 import AccountBar from './AccountBar.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const PRIMARY =
   'w-full rounded-3xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-xl shadow-emerald-400/25 transition active:scale-[0.98]';
@@ -31,10 +32,12 @@ function OnlineSection({ auth, onContinueOnline, onNewOnline, onOpenStats }) {
     if (!signedIn) return;
     listOpenTables()
       .then(setTables)
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(friendlyError(e)));
   }, [signedIn]);
 
-  const latest = tables?.[0];
+  // A game being played, and games that ended but are still open for settling.
+  const latest = tables?.find((t) => t.status !== 'ended');
+  const settling = tables?.filter((t) => t.status === 'ended') ?? [];
   return (
     <Section icon="🌐" title="שולחן אונליין עם חברים" hint="כולם רואים את השולחן מהטלפון שלהם · דורש התחברות">
       {!signedIn ? (
@@ -55,6 +58,26 @@ function OnlineSection({ auth, onContinueOnline, onNewOnline, onOpenStats }) {
               </span>
             </button>
           )}
+          {settling.map((t) => {
+            const total = t.settlement_transfers?.length ?? 0;
+            const paid = t.settlement_transfers?.filter((x) => x.paid_at).length ?? 0;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onContinueOnline(t.id)}
+                className="w-full rounded-2xl bg-amber-300/10 px-4 py-3 text-start ring-1 ring-amber-300/30 transition active:scale-[0.98]"
+              >
+                <span className="block font-bold text-amber-100">
+                  משחק פתוח: {paid} מתוך {total} שולמו 💸
+                </span>
+                <span className="block text-sm text-slate-400">
+                  {t.name ? `${t.name} · ` : ''}
+                  {t.ended_at ? formatDate(Date.parse(t.ended_at)) : ''} · מי מעביר למי
+                </span>
+              </button>
+            );
+          })}
           <button type="button" onClick={onNewOnline} className={latest ? SECONDARY : PRIMARY}>
             פתח שולחן אונליין {latest ? 'חדש' : '🌐'}
           </button>

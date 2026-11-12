@@ -46,6 +46,10 @@ export function describeLog(entry) {
       return `${who} רשם ש${name} שילם ${formatShekel(d.amount)} במזומן 💵`;
     case 'cash_removed':
       return `${who} מחק מזומן של ${formatShekel(d.amount)} של ${name}`;
+    case 'transfer_paid':
+      return `${who} סימן ששולם: ${name} ← ${d.to ?? 'שחקן'} ${formatShekel(d.amount)} ✓`;
+    case 'transfer_unpaid':
+      return `${who} ביטל סימון תשלום: ${name} ← ${d.to ?? 'שחקן'} ${formatShekel(d.amount)}`;
     case 'result_set':
       return `${who} הזין תוצאה ל${name}`;
     case 'member_joined':
@@ -58,6 +62,10 @@ export function describeLog(entry) {
       return `${who} הסיר את ${name} מהמנהלים`;
     case 'game_started':
       return `${who} התחיל את המשחק`;
+    case 'game_settled':
+      return d.manual ? `${who} סגר את ההתחשבנות` : 'כולם שילמו ✓ ההתחשבנות נסגרה';
+    case 'settling_reopened':
+      return `${who} ביטל סימון תשלום – ההתחשבנות נפתחה שוב`;
     case 'game_ended':
       return `${who} סיים את המשחק`;
     case 'game_reset':

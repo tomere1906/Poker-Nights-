@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ellipsize, imageFileName, layoutPills } from './settlementImage.js';
+import { ellipsize, imageFileName, layoutPills, podiumHeight } from './settlementImage.js';
 
 // A fake text measure: every character is 10px wide.
 const measure = (t) => [...t].length * 10;
@@ -20,5 +20,20 @@ describe('settlement image helpers', () => {
 
   it('names the file by the game date', () => {
     expect(imageFileName(new Date(2026, 9, 25, 23, 30).getTime())).toBe('poker-nights-2026-10-25.png');
+  });
+});
+
+describe('podium in the image', () => {
+  it('takes no room when nobody won', () => {
+    expect(podiumHeight([])).toBe(0);
+  });
+
+  it('is as tall as its tallest column (1st on the highest step), more names = taller', () => {
+    const one = podiumHeight([{ place: 1, net: 100, ids: ['a'] }]);
+    const three = podiumHeight([{ place: 2, net: 50, ids: ['b'] }, { place: 1, net: 100, ids: ['a'] }, { place: 3, net: 20, ids: ['c'] }]);
+    const tie = podiumHeight([{ place: 1, net: 100, ids: ['a', 'b'] }]);
+    expect(one).toBeGreaterThan(0);
+    expect(three).toBe(one);
+    expect(tie).toBeGreaterThan(one);
   });
 });

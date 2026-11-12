@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react';
-import { DEFAULT_CHIP_VALUE, EXITS, chipsToShekels, netOf, potTotal, shekelsToChips, totalIn } from '../lib/game.js';
-import { formatChipValue, formatCount, formatShekel, parseAmount } from '../lib/format.js';
+import { useState } from 'react';
+import { DEFAULT_CHIP_VALUE, EXITS, netOf, potTotal, totalIn } from '../lib/game.js';
+import { formatChipValue, formatShekel } from '../lib/format.js';
 import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
 import CashForm from './CashForm.jsx';
+import ResultField from './ResultField.jsx';
+import { DEFAULT_RESULT_UNIT } from '../lib/result.js';
 import { cashRoom } from '../lib/settlement.js';
 
 // "מזומן ששולם": cash already paid (when leaving, or at the end). Only the rest
@@ -89,49 +91,37 @@ function QuickPill({ active, tone, onClick, children }) {
   );
 }
 
-const MODES = [
-  { id: 'net', label: 'רווח / הפסד' },
-  { id: 'chips', label: 'צ׳יפים בסוף' },
-];
-
-function AmountField({ value, onChange, placeholder, inputRef, enterKeyHint, suffix = '₪' }) {
-  return (
-    <div className="relative w-24">
-      <input
-        ref={inputRef}
-        type="text"
-        inputMode="numeric"
-        enterKeyHint={enterKeyHint}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-2xl bg-slate-950/60 px-3 py-3 pe-7 text-lg font-bold outline-none ring-2 ring-transparent placeholder:text-sm placeholder:font-normal placeholder:text-slate-500 focus:ring-emerald-400"
-      />
-      <span className="pointer-events-none absolute inset-y-0 end-2.5 flex items-center text-slate-400">{suffix}</span>
-    </div>
-  );
-}
-
-export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAddCash, onRemoveCash }) {
+// End of the night: every player's result on one screen. Each player says it
+// their own way ("600 צ׳יפים", "300 ₪", "מינוס 100"), picked per row with a
+// small selector (ResultField); everything is stored as what they leave with,
+// so the totals check works with mixed styles. `state.finals` keeps the
+// table's endMode terms (profit/loss or ₪ at the end); `onMode` is kept for
+// callers but the screen no longer switches it.
+export default function EndGame({ state, onFinal, onBack, onSettle, onAddCash, onRemoveCash }) {
   const { players, finals, endMode } = state;
   const cash = state.cash ?? [];
-  // "שווי צ'יפ": when a chip isn't worth 1 ₪, the chips mode takes chip counts
-  // and converts them to ₪ (finals always hold ₪).
   const chipValue = state.settings?.chipValue ?? DEFAULT_CHIP_VALUE;
-  const counting = endMode === 'chips' && chipValue !== DEFAULT_CHIP_VALUE;
-  // The chip count as typed (the stored ₪ are rounded, so it can't always be derived).
-  const [chipDrafts, setChipDrafts] = useState({});
-  // In net mode, a typed amount waits here until a +/− is chosen.
-  const [signs, setSigns] = useState({});
-  const [drafts, setDrafts] = useState({});
-  const inputs = useRef({});
+  // Per player, how the result is told (default: profit/loss).
+  const [units, setUnits] = useState({});
+  const unitOf = (id) => units[id] ?? DEFAULT_RESULT_UNIT;
 
-  const ordered = [...players].sort((a, b) => a.seat - b.seat);
+  // Seat order; players who left mid-game (no seat) last.
+  const ordered = [...players].sort((a, b) => (a.seat ?? 99) - (b.seat ?? 99));
   const nets = players.map((p) => netOf(state, p));
   const missing = nets.filter((n) => n === null).length;
   const diff = nets.reduce((sum, n) => sum + (n ?? 0), 0);
-  const gains = nets.reduce((sum, n) => sum + Math.max(n ?? 0, 0), 0);
-  const losses = nets.reduce((sum, n) => sum + Math.min(n ?? 0, 0), 0);
+
+  // What a player leaves with (₪), or null before it's entered.
+  // (netOf reads the exit for a player who left: one source per player.)
+  const shekelsOf = (p) => {
+    const net = netOf(state, p);
+    return net === null ? null : net + totalIn(p);
+  };
+  const leaving = players.reduce((sum, p) => sum + (shekelsOf(p) ?? 0), 0);
+
+  function setShekels(p, shekels) {
+    onFinal(p.id, shekels === null ? null : endMode === 'chips' ? shekels : shekels - totalIn(p));
+  }
 
   // Cash above a loss (e.g. the result was changed after the cash was recorded).
   const overpaid = players.filter((p) => {
@@ -139,54 +129,6 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
     const net = netOf(state, p);
     return paid > 0 && net !== null && paid > Math.max(0, -net);
   });
-
-  const signOf = (id) => (finals[id] > 0 ? 1 : finals[id] < 0 ? -1 : signs[id]);
-
-  function setNet(id, amount, sign) {
-    if (sign) setSigns((s) => ({ ...s, [id]: sign }));
-    if (amount === null) {
-      onFinal(id, null);
-      setDrafts((d) => ({ ...d, [id]: undefined }));
-    } else if (amount === 0 || sign) {
-      onFinal(id, amount * (sign ?? 1));
-      setDrafts((d) => ({ ...d, [id]: undefined }));
-    } else {
-      onFinal(id, null);
-      setDrafts((d) => ({ ...d, [id]: amount }));
-    }
-  }
-
-  function chooseSign(id, sign) {
-    setSigns((s) => ({ ...s, [id]: sign }));
-    const amount = id in finals ? Math.abs(finals[id]) : drafts[id];
-    if (amount) onFinal(id, amount * sign);
-    setDrafts((d) => ({ ...d, [id]: undefined }));
-    inputs.current[id]?.focus();
-  }
-
-  // One-tap result: net is the player's profit/loss, stored in the current mode's terms.
-  function quick(player, net) {
-    onFinal(player.id, endMode === 'chips' ? net + totalIn(player) : net);
-    setDrafts((d) => ({ ...d, [player.id]: undefined }));
-    if (net < 0) setSigns((s) => ({ ...s, [player.id]: -1 }));
-  }
-
-  const parse = (text) => (text.trim() === '' ? null : parseAmount(text));
-
-  // The chip count shown in the field: what was typed while it still matches
-  // the stored amount, otherwise worked back from the ₪.
-  function chipCount(id) {
-    if (!(id in finals)) return null;
-    const draft = chipDrafts[id];
-    if (draft !== undefined && chipsToShekels(draft, chipValue) === finals[id]) return draft;
-    return shekelsToChips(finals[id], chipValue);
-  }
-
-  function setChips(id, text) {
-    const count = parse(text);
-    setChipDrafts((d) => ({ ...d, [id]: count ?? undefined }));
-    onFinal(id, count === null ? null : chipsToShekels(count, chipValue));
-  }
 
   return (
     <div className="flex flex-1 flex-col">
@@ -202,36 +144,17 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
         <h2 className="text-2xl font-extrabold">סיום משחק 🏁</h2>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-slate-800/70 p-1">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => onMode(m.id)}
-            className={`rounded-xl py-2.5 font-bold transition ${
-              endMode === m.id ? 'bg-slate-100 text-slate-900 shadow' : 'text-slate-400'
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
       <p className="mb-3 text-sm text-slate-400">
-        {endMode === 'net'
-          ? 'כמה כל אחד הרוויח או הפסיד? בחר + או − ורשום סכום'
-          : counting
-            ? `כמה צ׳יפים נשארו לכל אחד? צ׳יפ שווה ${formatChipValue(chipValue)}, ההמרה לשקלים אוטומטית`
-            : 'עם כמה צ׳יפים כל אחד יצא?'}
+        מה כל אחד אומר? בכל שורה בוחרים איך הוא מספר: רווח/הפסד, צ׳יפים או כסף
+        {chipValue !== DEFAULT_CHIP_VALUE && ` (צ׳יפ שווה ${formatChipValue(chipValue)})`}
       </p>
 
       <ul className="space-y-2">
         {ordered.map((p, i) => {
           const net = netOf(state, p);
-          const sign = signOf(p.id);
-          const needsSign = endMode === 'net' && drafts[p.id] > 0;
-          const enterKeyHint = i < ordered.length - 1 ? 'next' : 'done';
+          const paidCash = cash.filter((c) => c.from === p.id).reduce((s, c) => s + c.amount, 0);
           return (
-            <li key={p.id} className="rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5">
+            <li key={p.id} className="space-y-2 rounded-3xl bg-slate-800/70 p-3 shadow-lg ring-1 ring-white/5">
               <div className="flex items-center gap-2">
                 <Avatar player={p} size="h-11 w-11 text-base" />
                 <div className="min-w-0 flex-1">
@@ -239,69 +162,26 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
                   <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-400">
                     <span>בפנים {formatShekel(totalIn(p))}</span>
                     {net !== null && <NetBadge net={net} />}
-                    {needsSign && <span className="font-bold text-amber-300">+ או −?</span>}
-                    {counting && p.id in finals && (
-                      <span className="font-bold text-slate-200">
-                        {formatCount(chipCount(p.id))} צ׳יפים = {formatShekel(finals[p.id])}
-                      </span>
-                    )}
-                    {cash.some((c) => c.from === p.id) && (
-                      <span className="text-amber-200">
-                        💵 שילם {formatShekel(cash.filter((c) => c.from === p.id).reduce((s, c) => s + c.amount, 0))}
-                      </span>
-                    )}
+                    {paidCash > 0 && <span className="text-amber-200">💵 שילם {formatShekel(paidCash)}</span>}
                   </p>
                 </div>
-  
-                {endMode === 'net' ? (
-                  <>
-                    <div className={`flex overflow-hidden rounded-2xl ${needsSign ? 'ring-2 ring-amber-300' : ''}`}>
-                      <button
-                        type="button"
-                        onClick={() => chooseSign(p.id, 1)}
-                        aria-label="רווח"
-                        className={`h-12 w-11 text-2xl font-extrabold transition ${
-                          sign === 1 ? 'bg-emerald-400 text-slate-900' : 'bg-slate-950/60 text-emerald-300'
-                        }`}
-                      >
-                        +
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => chooseSign(p.id, -1)}
-                        aria-label="הפסד"
-                        className={`h-12 w-11 text-2xl font-extrabold transition ${
-                          sign === -1 ? 'bg-rose-400 text-slate-900' : 'bg-slate-950/60 text-rose-300'
-                        }`}
-                      >
-                        −
-                      </button>
-                    </div>
-                    <AmountField
-                      inputRef={(el) => (inputs.current[p.id] = el)}
-                      enterKeyHint={enterKeyHint}
-                      value={p.id in finals ? String(Math.abs(finals[p.id])) : drafts[p.id] ?? ''}
-                      onChange={(text) => setNet(p.id, parse(text), sign)}
-                      placeholder="סכום"
-                    />
-                  </>
-                ) : (
-                  <AmountField
-                    enterKeyHint={enterKeyHint}
-                    value={p.id in finals ? String(counting ? chipCount(p.id) : finals[p.id]) : ''}
-                    onChange={(text) => (counting ? setChips(p.id, text) : onFinal(p.id, parse(text)))}
-                    placeholder={counting ? 'צ׳יפים' : 'יוצא עם'}
-                    suffix={counting ? '' : '₪'}
-                  />
-                )}
               </div>
 
-              {/* Quick results, aligned under the name (avatar 2.75rem + gap 0.5rem). */}
-              <div className="mt-2 flex gap-2 ps-[3.25rem]">
-                <QuickPill active={net === 0} tone="even" onClick={() => quick(p, 0)}>
+              <ResultField
+                totalIn={totalIn(p)}
+                chipValue={chipValue}
+                shekels={shekelsOf(p)}
+                onChange={(shekels) => setShekels(p, shekels)}
+                unit={unitOf(p.id)}
+                onUnit={(unit) => setUnits((u) => ({ ...u, [p.id]: unit }))}
+                enterKeyHint={i < ordered.length - 1 ? 'next' : 'done'}
+              />
+
+              <div className="flex gap-2">
+                <QuickPill active={net === 0} tone="even" onClick={() => setShekels(p, totalIn(p))}>
                   {EXITS.even.icon} {EXITS.even.label}
                 </QuickPill>
-                <QuickPill active={net === -totalIn(p)} tone="lost" onClick={() => quick(p, -totalIn(p))}>
+                <QuickPill active={net === -totalIn(p)} tone="lost" onClick={() => setShekels(p, 0)}>
                   {EXITS.lost_all.icon} {EXITS.lost_all.label}
                 </QuickPill>
               </div>
@@ -316,25 +196,12 @@ export default function EndGame({ state, onMode, onFinal, onBack, onSettle, onAd
           color: iOS Safari tints its toolbar from what touches that edge. */}
       <div className="sticky bottom-0 mt-auto space-y-3 bg-gradient-to-t from-[#0b1120] via-[#0b1120] to-transparent pt-6 pb-3">
         <div className="flex justify-between rounded-2xl bg-slate-800/70 px-4 py-3 text-sm">
-          {endMode === 'net' ? (
-            <>
-              <span>
-                רווחים <b className="text-emerald-300">{formatShekel(gains, { signed: true })}</b>
-              </span>
-              <span>
-                הפסדים <b className="text-rose-300">{formatShekel(losses, { signed: true })}</b>
-              </span>
-            </>
-          ) : (
-            <>
-              <span>
-                נכנס לקופה <b>{formatShekel(potTotal(players))}</b>
-              </span>
-              <span>
-                יוצא <b>{formatShekel(players.reduce((sum, p) => sum + (finals[p.id] ?? 0), 0))}</b>
-              </span>
-            </>
-          )}
+          <span>
+            נכנס לקופה <b>{formatShekel(potTotal(players))}</b>
+          </span>
+          <span>
+            יוצא <b>{formatShekel(leaving)}</b>
+          </span>
         </div>
 
         {missing === 0 && diff !== 0 && (

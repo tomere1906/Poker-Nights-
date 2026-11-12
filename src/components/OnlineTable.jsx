@@ -8,7 +8,14 @@ import TableManageSheet from './TableManageSheet.jsx';
 import OnlineEndGame from './OnlineEndGame.jsx';
 import Settlement from './Settlement.jsx';
 import { settle } from '../lib/settlement.js';
+import { openBit } from '../lib/bit.js';
+import { copyText } from '../lib/clipboard.js';
+import { formatShekel } from '../lib/format.js';
+import { formatPhone } from '../lib/phone.js';
+import { saveMyPhone } from '../lib/auth.js';
+import PhonePrompt from './PhonePrompt.jsx';
 import { CardsIcon } from './Icons.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const HEADER_BUTTON = 'rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 active:scale-95';
 const BIG_BUTTON = 'w-full rounded-2xl py-4 text-lg font-extrabold transition active:scale-[0.98]';
@@ -49,6 +56,22 @@ function CloseTableButton({ isManager, missing, onClose }) {
   );
 }
 
+// Closing the settling by hand (the manager), e.g. when the rest was settled outside the app.
+function CloseSettlingButton({ paid, total, onClose }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => (confirm ? onClose() : setConfirm(true))}
+      className={`w-full rounded-2xl py-3 text-sm font-bold transition active:scale-[0.98] ${
+        confirm ? 'bg-amber-300 text-slate-900' : 'bg-slate-800 text-slate-200'
+      }`}
+    >
+      {confirm ? `לסגור את ההתחשבנות? ${paid} מתוך ${total} שולמו – הקש שוב` : 'סגור את ההתחשבנות 🔒'}
+    </button>
+  );
+}
+
 function ReopenButton({ onReopen }) {
   const [confirm, setConfirm] = useState(false);
   return (
@@ -68,10 +91,38 @@ function ReopenButton({ onReopen }) {
 // in "כל אחד את שלו" mode add buy-ins for themselves). At the end: managers
 // enter results, the manager closes the table, everyone sees who pays whom.
 export default function OnlineTable({ tableId, userId, onHome, showToast, onCelebrate }) {
-  const { view, error, loading, live, actions } = useOnlineTable(tableId, userId);
+  const { view, error, loading, live, actions, refresh } = useOnlineTable(tableId, userId);
+  // "לא עכשיו" on the phone card: hidden for this table (on this device).
+  const dismissKey = `poker-nights-phone-later:${tableId}`;
+  const [phoneLater, setPhoneLater] = useState(() => {
+    try {
+      return localStorage.getItem(dismissKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  // On a closed table, which stored rows I pay by transfer to someone whose number I
+  // can't see yet. A number saved later isn't in the change log (it's private),
+  // so while I wait for one, check again every 10 seconds.
+  const waitingForPhone = useMemo(() => {
+    if (!view?.settling) return false;
+    const seat = new Map(view.players.map((p) => [p.id, p]));
+    return view.transfers.some((t) => {
+      const to = seat.get(t.to);
+      return !t.paidAt && t.amount > t.cash && seat.get(t.from)?.userId === userId && to?.userId && !view.phones[to.userId];
+    });
+  }, [view, userId]);
+  useEffect(() => {
+    if (!waitingForPhone) return undefined;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [waitingForPhone, refresh]);
   const [panel, setPanel] = useState(null); // null | 'log' | 'manage' | 'invite'
   const [step, setStep] = useState('table'); // 'table' | 'end' | 'settle' (managers, before closing)
-  const fail = (e) => showToast(`הפעולה נכשלה: ${e.message ?? e}`);
+  const fail = (e) => showToast(friendlyError(e));
 
   // Confetti for everyone at the table when the manager closes it.
   const wasEnded = useRef(null);
@@ -81,6 +132,18 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
     wasEnded.current = view.ended;
     if (view.ended) setStep('table');
   }, [view, onCelebrate]);
+
+  // The settling closing while the table is open: "✓ כולם שילמו" (or closed by hand).
+  const wasSettling = useRef(null);
+  useEffect(() => {
+    if (!view) return;
+    if (wasSettling.current === true && view.ended && !view.settling) {
+      const allPaid = view.transfers.every((t) => t.paidAt);
+      showToast(allPaid ? '✓ כולם שילמו – ההתחשבנות נסגרה' : 'ההתחשבנות נסגרה 🔒');
+      if (allPaid) onCelebrate?.();
+    }
+    wasSettling.current = view.settling;
+  }, [view, showToast, onCelebrate]);
 
   // Before closing: results as typed. After: the stored, settled results.
   const entries = useMemo(() => {
@@ -155,14 +218,25 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
 
   if (panel === 'log') return <TableLog entries={view.log} tableName={view.name} onBack={() => setPanel(null)} />;
 
-  const mine = (player) => player.userId === userId;
+  const mine = (player) => Boolean(player?.userId) && player.userId === userId;
+  const seatOf = (id) => view.players.find((p) => p.id === id);
   const canSelfAdd = (player) => view.buyInMode === 'self_add' && !view.ended && mine(player);
   const missing = view.players.filter((p) => !(p.id in view.finals)).length;
+
+  // A winner who gets at least one transfer (not only cash) and has no number saved.
+  const askPhone =
+    view.settling &&
+    !phoneLater &&
+    !view.phones[userId] &&
+    view.transfers.some((t) => !t.paidAt && t.amount > t.cash && mine(seatOf(t.to)));
+  const paidCount = view.transfers.filter((t) => t.paidAt).length;
+  const allPaid = view.transfers.length > 0 && paidCount === view.transfers.length;
 
   let body;
   if (view.ended) {
     body = (
       <Settlement
+        showPodium
         players={view.players}
         entries={entries}
         rounding={view.settings.rounding}
@@ -171,11 +245,59 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         manager={managerSeat}
         tableName={view.name}
         date={view.endedAt}
-        notice={<p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">השולחן נסגר · התוצאות נשמרו 🔒</p>}
+        notice={
+          <>
+            {view.settling ? (
+              <div className="mb-3 rounded-2xl bg-amber-300/10 px-4 py-2 text-center text-sm font-bold text-amber-100 ring-1 ring-amber-300/20">
+                פתוח להתחשבנות · המשחק נגמר והתוצאות נשמרו
+                <span className="block text-xs font-medium text-amber-200/80">נסגר לבד כשכל ההעברות מסומנות "שולם ✓"</span>
+              </div>
+            ) : (
+              <p className="mb-3 rounded-2xl bg-emerald-400/10 px-4 py-2 text-center text-sm font-bold text-emerald-200">
+                {allPaid ? '✓ כולם שילמו · ההתחשבנות נסגרה 🔒' : view.transfers.length > 0 ? 'ההתחשבנות נסגרה 🔒' : 'השולחן נסגר · התוצאות נשמרו 🔒'}
+              </p>
+            )}
+            {askPhone && (
+              <PhonePrompt
+                onSave={async (phone) => {
+                  await saveMyPhone(userId, phone);
+                  await refresh();
+                  showToast('המספר נשמר ✓ מי שמעביר לך יראה את כפתור הביט');
+                }}
+                onLater={() => {
+                  try {
+                    localStorage.setItem(dismissKey, '1');
+                  } catch {
+                    // Private mode: hidden until the page reloads.
+                  }
+                  setPhoneLater(true);
+                }}
+              />
+            )}
+          </>
+        }
+        stored={view.transfers}
+        canMark={(row) => view.canManage || mine(seatOf(row.from)) || mine(seatOf(row.to))}
+        onTogglePaid={(row, paid) => actions.setPaid(row.id, paid).catch(fail)}
+        phoneFor={(row) =>
+          view.settling && !row.paidAt && row.amount > row.cash && mine(seatOf(row.from))
+            ? view.phones[seatOf(row.to)?.userId] ?? null
+            : null
+        }
+        onBit={(row, phone) => {
+          // Copy first (still inside the tap), then open Bit.
+          copyText(phone).then((ok) =>
+            showToast(ok ? `המספר הועתק · ${formatShekel(row.amount - row.cash)} – הדבק בביט` : `לא הצלחנו להעתיק: ${formatPhone(phone)}`)
+          );
+          openBit();
+        }}
       >
         <button type="button" onClick={onHome} className={`${BIG_BUTTON} bg-slate-800 text-slate-100`}>
           חזרה למסך הבית
         </button>
+        {view.isManager && view.settling && (
+          <CloseSettlingButton paid={paidCount} total={view.transfers.length} onClose={() => actions.closeSettling().catch(fail)} />
+        )}
         {view.isManager && <ReopenButton onReopen={() => actions.reopen().catch(fail)} />}
       </Settlement>
     );
@@ -208,8 +330,15 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
           missing={missing}
           onClose={async () => {
             try {
-              // The same whole-shekel results everyone will see; the database checks they add up to 0.
-              await actions.endGame(settle(entries, { unit: view.settings.rounding }).nets);
+              // Exactly what this screen shows: the whole-shekel results and who pays whom.
+              // The database checks the results add up to 0 and the transfers match them.
+              const { nets, transfers } = settle(entries, {
+                unit: view.settings.rounding,
+                cash: view.cash,
+                absent,
+                manager: managerSeat,
+              });
+              await actions.endGame(nets, transfers);
               showToast('השולחן נסגר – התוצאות נשמרו 🎉');
             } catch (e) {
               fail(e);
@@ -261,7 +390,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
           view={view}
           actions={actions}
           onClose={() => setPanel(null)}
-          onError={(message) => showToast(`הפעולה נכשלה: ${message}`)}
+          onError={(message) => showToast(message)}
           onDeleted={() => {
             showToast('השולחן נמחק');
             onHome();

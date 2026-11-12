@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { signInWithGoogle } from '../lib/auth.js';
 import Avatar, { profileAvatar } from './Avatar.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 function GoogleLogo() {
   return (
@@ -48,7 +49,7 @@ export default function AccountBar({ auth, onOpenProfile }) {
     try {
       await signInWithGoogle(); // navigates away to Google
     } catch (e) {
-      setError(e.message);
+      setError(friendlyError(e));
       setBusy(false);
     }
   }

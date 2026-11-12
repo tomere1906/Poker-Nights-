@@ -1,55 +1,123 @@
+import { useRef, useState } from 'react';
 import { formatDate, formatShekel } from '../lib/format.js';
 
 const W = 320;
 const H = 160;
-const PAD = 10;
+const PAD = 12;
+// Room on the left for the "0" label of the zero line.
+const LEFT = 22;
+const DOT = { win: '#34d399', loss: '#fb7185', even: '#94a3b8' };
+const dotColor = (net) => (net > 0 ? DOT.win : net < 0 ? DOT.loss : DOT.even);
+const signed = (n) => formatShekel(n, { signed: true });
 
-// Net per night (green/red bars) and the running total (line), oldest on the
-// right so time reads in the same direction as the Hebrew text.
+// "הערב" and "מצטבר" side by side, the same size.
+function Amount({ label, value }) {
+  return (
+    <span>
+      <span className="block text-[11px] text-slate-400">{label}</span>
+      <b className="block text-base leading-tight" style={{ color: dotColor(value) }}>
+        {signed(value)}
+      </b>
+    </span>
+  );
+}
+
+// The running total as one line, a dot per night (green profit, red loss, gray
+// break-even), and a dashed zero line. Time runs left to right (oldest on the
+// left, like bank and stock charts) even though the page is RTL. Tapping (or
+// sliding a finger over) the chart picks the nearest night and shows its date,
+// that night's amount and the running total.
 export default function NetChart({ series }) {
+  const svg = useRef(null);
+  const [picked, setPicked] = useState(null);
   if (series.length === 0) return null;
-  const values = series.flatMap((g) => [g.net, g.cumulative, 0]);
+
+  const values = series.map((g) => g.cumulative).concat(0);
   const max = Math.max(...values);
   const min = Math.min(...values);
   const span = max - min || 1;
   const y = (v) => PAD + ((max - v) / span) * (H - 2 * PAD);
-  const step = (W - 2 * PAD) / series.length;
-  // RTL: the first (oldest) game sits at the right edge.
-  const x = (i) => W - PAD - step * (i + 0.5);
-  const bar = Math.max(2, Math.min(28, step * 0.6));
+  const step = series.length > 1 ? (W - LEFT - PAD) / (series.length - 1) : 0;
+  // Left to right: the first (oldest) night sits at the left edge.
+  const x = (i) => (series.length > 1 ? LEFT + step * i : (LEFT + W - PAD) / 2);
   const line = series.map((g, i) => `${x(i).toFixed(1)},${y(g.cumulative).toFixed(1)}`).join(' ');
   const last = series[series.length - 1];
+  const r = series.length > 40 ? 2.5 : series.length > 20 ? 3 : 4;
 
+  function pick(e) {
+    const box = svg.current.getBoundingClientRect();
+    const vx = ((e.clientX - box.left) / box.width) * W;
+    const i = series.length > 1 ? Math.round((vx - LEFT) / step) : 0;
+    setPicked(Math.max(0, Math.min(series.length - 1, i)));
+  }
+
+  const g = picked == null ? null : series[picked];
   return (
     <figure className="rounded-3xl bg-slate-800/70 p-3 ring-1 ring-white/5">
-      <figcaption className="mb-1 flex items-center justify-between text-xs text-slate-400">
-        <span>רווח/הפסד לכל ערב · והמצטבר</span>
-        <span className="font-bold text-slate-200">{formatShekel(last.cumulative, { signed: true })}</span>
+      <figcaption className="mb-1 flex min-h-11 items-center justify-between gap-2 text-xs text-slate-400">
+        <span className="min-w-0">
+          {g ? (
+            <>
+              <b className="block text-slate-200">{formatDate(g.endedAt)}</b>
+              {g.tableName && <span className="block truncate">{g.tableName}</span>}
+            </>
+          ) : (
+            <>
+              <b className="block text-slate-200">רווח/הפסד מצטבר</b>
+              <span className="block">הקש על הגרף לפרטי ערב</span>
+            </>
+          )}
+        </span>
+        <span className="flex shrink-0 gap-4 text-center">
+          {g && <Amount label="הערב" value={g.net} />}
+          <Amount label="מצטבר" value={g ? g.cumulative : last.cumulative} />
+        </span>
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-44 w-full" role="img" aria-label="גרף רווח והפסד לאורך זמן">
-        <line x1={PAD} x2={W - PAD} y1={y(0)} y2={y(0)} stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
-        {series.map((g, i) => (
-          <rect
-            key={g.tableId}
-            x={x(i) - bar / 2}
-            width={bar}
-            y={Math.min(y(g.net), y(0))}
-            height={Math.max(1, Math.abs(y(g.net) - y(0)))}
-            rx={Math.min(4, bar / 2)}
-            fill={g.net >= 0 ? '#34d399' : '#fb7185'}
-            opacity="0.85"
-          >
-            <title>{`${g.tableName ?? formatDate(g.endedAt)}: ${formatShekel(g.net, { signed: true })}`}</title>
-          </rect>
-        ))}
-        {series.length > 1 && <polyline points={line} fill="none" stroke="#fcd34d" strokeWidth="2.5" strokeLinejoin="round" />}
-        {series.map((g, i) => (
-          <circle key={g.tableId} cx={x(i)} cy={y(g.cumulative)} r="2.5" fill="#fcd34d" />
+      <svg
+        ref={svg}
+        viewBox={`0 0 ${W} ${H}`}
+        className="h-44 w-full touch-pan-y select-none"
+        role="img"
+        aria-label="גרף רווח והפסד מצטבר לאורך זמן"
+        onPointerDown={pick}
+        onPointerMove={(e) => e.buttons && pick(e)}
+      >
+        <line x1={LEFT} x2={W - PAD} y1={y(0)} y2={y(0)} stroke="rgba(255,255,255,0.3)" strokeDasharray="4 4" />
+        <text x={LEFT - 6} y={y(0)} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="#64748b">
+          0
+        </text>
+        {g && <line x1={x(picked)} x2={x(picked)} y1={PAD / 2} y2={H - PAD / 2} stroke="rgba(255,255,255,0.25)" />}
+        {series.length > 1 && (
+          <polyline points={line} fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+        )}
+        {series.map((s, i) => (
+          <circle
+            key={s.tableId}
+            cx={x(i)}
+            cy={y(s.cumulative)}
+            r={i === picked ? r + 2.5 : r}
+            fill={dotColor(s.net)}
+            stroke={i === picked ? '#f8fafc' : '#0f172a'}
+            strokeWidth={i === picked ? 2 : 1}
+          />
         ))}
       </svg>
-      <div className="mt-1 flex justify-between text-[11px] text-slate-500">
-        <span>{formatDate(series[0].endedAt)}</span>
-        <span>{formatDate(last.endedAt)}</span>
+      {/* dir="ltr": the oldest date on the left, under the oldest night. */}
+      <div dir="ltr" className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span dir="rtl">
+          {formatDate(series[0].endedAt)} <span className="text-slate-600">(ראשון)</span>
+        </span>
+        <span aria-hidden className="text-slate-600">
+          הזמן →
+        </span>
+        <span dir="rtl">
+          {formatDate(last.endedAt)} <span className="text-slate-600">(אחרון)</span>
+        </span>
+      </div>
+      <div className="mt-1.5 flex justify-center gap-3 text-[11px] text-slate-400">
+        <span><span style={{ color: DOT.win }}>●</span> רווח</span>
+        <span><span style={{ color: DOT.loss }}>●</span> הפסד</span>
+        <span><span style={{ color: DOT.even }}>●</span> מאוזן</span>
       </div>
     </figure>
   );

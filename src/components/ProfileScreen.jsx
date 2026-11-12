@@ -16,7 +16,7 @@ export default function ProfileScreen({ profile, onBack, onSaved }) {
         <h2 className="text-2xl font-extrabold">הפרופיל שלי</h2>
       </div>
 
-      <ProfileForm profile={profile} submitLabel="שמור" onSaved={onSaved} />
+      <ProfileForm profile={profile} submitLabel="שמור" onSaved={onSaved} withPhone />
 
       <div className="mt-auto pt-8">
         <button

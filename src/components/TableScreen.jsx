@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { MAX_PLAYERS } from '../lib/game.js';
+import { MAX_PLAYERS, onTableTotal, potTotal, seatedPlayers } from '../lib/game.js';
 import { formatShekel } from '../lib/format.js';
 import PokerTable from './PokerTable.jsx';
 import AddPlayerSheet from './AddPlayerSheet.jsx';
 import PlayerSheet from './PlayerSheet.jsx';
 import BottomSheet from './BottomSheet.jsx';
+import LeftPlayers from './LeftPlayers.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const PRIMARY =
   'flex-1 rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none';
@@ -38,7 +40,10 @@ export default function TableScreen({
   const [sheet, setSheet] = useState(null);
   const [placing, setPlacing] = useState(false);
   const close = () => setSheet(null);
-  const full = players.length >= MAX_PLAYERS;
+  // Players who left mid-game gave up their seat: they wait next to the table.
+  const seated = seatedPlayers(players);
+  const left = players.filter((p) => p.out);
+  const full = seated.length >= MAX_PLAYERS;
   const activePlayer = sheet?.type === 'player' && players.find((p) => p.id === sheet.id);
 
   async function act(fn, success) {
@@ -46,14 +51,14 @@ export default function TableScreen({
       await fn();
       if (success) showToast(success);
     } catch (e) {
-      showToast(`הפעולה נכשלה: ${e.message}`);
+      showToast(friendlyError(e));
     }
   }
 
   function startAdd() {
     // Setup: next free seat. Game on with fewer than two players: nowhere "between" to choose.
     if (!started) setSheet({ type: 'add', seat: null });
-    else if (players.length < 2) setSheet({ type: 'add', position: players.length });
+    else if (seated.length < 2) setSheet({ type: 'add', position: seated.length });
     else setPlacing(true);
   }
 
@@ -61,7 +66,10 @@ export default function TableScreen({
     <>
       <main className="flex flex-1 items-center">
         <PokerTable
-          players={players}
+          players={seated}
+          leftCount={left.length}
+          pot={potTotal(players)}
+          onTable={onTableTotal(players)}
           started={started}
           name={tableName}
           placing={placing}
@@ -80,6 +88,8 @@ export default function TableScreen({
           onMove={canManage ? (id, seat) => act(() => onMove(id, seat)) : undefined}
         />
       </main>
+
+      <LeftPlayers players={left} onTap={(p) => setSheet({ type: 'player', id: p.id })} />
 
       {placing ? (
         <button
@@ -171,6 +181,7 @@ export default function TableScreen({
           settings={settings}
           people={people}
           usedColors={players.map((p) => p.color)}
+          colorOwners={Object.fromEntries(players.map((p) => [p.color, p.name]))}
           onClose={close}
           onAdd={({ name, amount, color, userId }) => {
             close();
@@ -214,7 +225,10 @@ export default function TableScreen({
           onMarkBack={
             onMarkBack &&
             // The sheet stays open: a re-buy usually comes right after.
-            (() => act(() => onMarkBack(activePlayer), `${activePlayer.name} חזר לשחק 🎉`))
+            (() =>
+              full
+                ? showToast('אין כיסא פנוי – מישהו צריך לפנות מקום קודם')
+                : act(() => onMarkBack(activePlayer), `${activePlayer.name} חזר לשחק 🎉`))
           }
           onEditIdentity={
             onEditIdentity &&

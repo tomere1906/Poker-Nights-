@@ -3,12 +3,13 @@
 // each user may actually do; the UI only hides what would be refused anyway.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './supabase.js';
-import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChips, firstFreeSeat, totalIn } from './game.js';
+import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChips, exitFor, firstFreeSeat, seatedPlayers, totalIn } from './game.js';
 import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
+import { friendlyError } from './errors.js';
 
 const TABLE_COLUMNS =
-  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, chip_value, buy_in_mode, end_mode, invite_code, created_at, ended_at';
+  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, chip_value, buy_in_mode, end_mode, invite_code, created_at, ended_at, settled_at, settled_manually';
 
 // Same limit as the database check (poker_tables_name_length).
 export const MAX_TABLE_NAME = 30;
@@ -59,19 +60,74 @@ export async function joinTable(tableId, code) {
   if (error && error.code !== '23505') throw error;
 }
 
-// Tables I manage or joined that haven't ended (RLS returns only those).
+// Tables I manage or joined (RLS returns only those) that are still being
+// played, or ended but still open for settling ("פתוח להתחשבנות").
 export async function listOpenTables() {
   return must(
     await supabase
       .from('poker_tables')
-      .select(`${TABLE_COLUMNS}, table_players(count)`)
-      .neq('status', 'ended')
+      .select(`${TABLE_COLUMNS}, table_players(count), settlement_transfers(paid_at)`)
+      .or('status.neq.ended,settled_at.is.null')
       .order('created_at', { ascending: false })
   );
 }
 
+// How long a closed game stays in the manager's "משחקים שניהלתי" list (for
+// fixes via "פתח מחדש לתיקונים"). After that it only leaves the list: the
+// game itself and everyone's stats stay.
+export const RECENT_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Closed games of the last RECENT_DAYS days (RLS returns only my tables), with
+// the members so the list can keep only the ones I manage or co-manage.
+// Also returns the ids I removed from that list ("הסר מהרשימה").
+export async function listRecentGames(now = Date.now()) {
+  const [tables, hidden] = await Promise.all([
+    supabase
+      .from('poker_tables')
+      .select(`${TABLE_COLUMNS}, table_members(user_id, is_co_manager), settlement_transfers(paid_at)`)
+      .eq('status', 'ended')
+      .gte('ended_at', new Date(now - RECENT_DAYS * DAY_MS).toISOString())
+      .order('ended_at', { ascending: false }),
+    supabase.from('managed_list_hidden').select('table_id'),
+  ]);
+  return { tables: must(tables), hidden: optional(hidden).map((h) => h.table_id) };
+}
+
+// "הסר מהרשימה": only my own list; the game and everyone's stats stay.
+export async function hideFromManagedList(tableId) {
+  const { error } = await supabase.from('managed_list_hidden').insert({ table_id: tableId });
+  if (error && error.code !== '23505') throw error; // already hidden is fine
+}
+
+// "מחק משחק לגמרי": the original manager only (RLS); everything of the game
+// goes, including everyone's stats.
+export async function deleteGame(tableId) {
+  const rows = must(await supabase.from('poker_tables').delete().eq('id', tableId).select('id'));
+  if (!rows.length) throw new Error('רק המנהל שפתח את השולחן יכול למחוק אותו');
+}
+
+// Pure: the closed games (settled or still open for settling) I managed or
+// co-managed in the last RECENT_DAYS days, newest first, minus the ones I
+// removed from the list.
+export function recentManagedGames(tables, userId, now = Date.now(), hidden = []) {
+  const since = now - RECENT_DAYS * DAY_MS;
+  const manages = (t) =>
+    t.manager_id === userId || (t.table_members ?? []).some((m) => m.user_id === userId && m.is_co_manager);
+  return (tables ?? [])
+    .filter((t) => t.status === 'ended' && t.ended_at && Date.parse(t.ended_at) >= since && manages(t))
+    .filter((t) => !hidden.includes(t.id))
+    .sort((a, b) => Date.parse(b.ended_at) - Date.parse(a.ended_at));
+}
+
+// Reads that may not exist yet while a migration hasn't been applied: an empty list then.
+function optional({ data, error }) {
+  if (error && ['42P01', 'PGRST200', 'PGRST205'].includes(error.code)) return [];
+  return must({ data, error });
+}
+
 async function loadTable(tableId) {
-  const [table, players, buyIns, members, log, cash] = await Promise.all([
+  const [table, players, buyIns, members, log, cash, transfers, phones] = await Promise.all([
     // poker_tables reaches profiles several ways (manager, members, players): name the FK.
     supabase
       .from('poker_tables')
@@ -95,6 +151,14 @@ async function loadTable(tableId) {
       .order('created_at', { ascending: false })
       .limit(300),
     supabase.from('cash_payments').select('id, payer_id, amount, created_at').eq('table_id', tableId).order('created_at'),
+    // Who pays whom, stored when the table was closed (empty while it's open).
+    supabase
+      .from('settlement_transfers')
+      .select('id, position, from_player, to_player, amount, cash, paid_at, paid_by')
+      .eq('table_id', tableId)
+      .order('position'),
+    // RLS returns only my own number and the numbers of people I have to transfer money to.
+    supabase.from('profile_phones').select('user_id, phone'),
   ]);
   return {
     table: must(table),
@@ -103,6 +167,8 @@ async function loadTable(tableId) {
     members: must(members),
     log: must(log),
     cash: must(cash),
+    transfers: optional(transfers),
+    phones: optional(phones),
   };
 }
 
@@ -122,8 +188,9 @@ function toPlayer(row, buyIns) {
     out: row.out_kind ? { kind: row.out_kind, chips: row.out_chips } : null,
     // "לא כאן" set by hand on the settlement screen (null = automatic: whoever left).
     absent: row.absent ?? null,
-    // Chips the player left with, as entered on the end-game screen; else the exit amount.
-    finalChips: row.final_value ?? (row.out_kind ? row.out_chips : null),
+    // What the player leaves with (₪). One source per player: the exit for a
+    // player who left mid-game, the end-game value for everyone else.
+    finalChips: row.out_kind ? row.out_chips : row.final_value,
     finalNet: row.final_net,
   };
 }
@@ -180,6 +247,9 @@ export function toView(raw, userId) {
     status: table.status,
     ended,
     endedAt: table.ended_at ? Date.parse(table.ended_at) : null,
+    // The game ended but transfers are still being paid ("פתוח להתחשבנות").
+    settling: ended && !table.settled_at,
+    settledManually: Boolean(table.settled_manually),
     started: table.status !== 'seating',
     endMode,
     finals: finalsFor(players, endMode),
@@ -197,10 +267,21 @@ export function toView(raw, userId) {
     isManager,
     canManage,
     // A player who joined by invite and isn't seated yet picks their own free seat.
-    canSeatSelf: !canManage && !ended && !seated.has(userId) && players.length < MAX_PLAYERS,
+    canSeatSelf: !canManage && !ended && !seated.has(userId) && seatedPlayers(players).length < MAX_PLAYERS,
     myUserId: userId,
     // Cash paid into the pot (same shape as the local game's state.cash).
     cash: raw.cash.map((c) => ({ id: c.id, from: c.payer_id, amount: c.amount })),
+    // Stored at closing, in display order ([] for tables closed before this existed).
+    transfers: (raw.transfers ?? []).map((t) => ({
+      id: t.id,
+      from: t.from_player,
+      to: t.to_player,
+      amount: t.amount,
+      cash: t.cash,
+      paidAt: t.paid_at ? Date.parse(t.paid_at) : null,
+    })),
+    // { userId: '05…' }: my own number and those of people I have to transfer money to.
+    phones: Object.fromEntries((raw.phones ?? []).map((p) => [p.user_id, p.phone])),
     log: raw.log,
   };
 }
@@ -208,7 +289,8 @@ export function toView(raw, userId) {
 // Writes. Each takes the current view (for seat math) and throws on failure.
 function makeActions(view) {
   const tableId = view.id;
-  const players = () => [...view.players].sort((a, b) => a.seat - b.seat);
+  // Players sitting at the table, in seat order (those who left have no seat).
+  const players = () => seatedPlayers(view.players).sort((a, b) => a.seat - b.seat);
 
   // One row per bill: each is an indivisible unit in the settlement.
   async function insertCash({ from, bills }) {
@@ -238,7 +320,9 @@ function makeActions(view) {
         if (target === null) throw new Error('השולחן מלא');
         return insertPlayer({ seat: target, name, amount, color, userId });
       }
-      const at = Math.min(Math.max(position ?? view.players.length, 0), view.players.length);
+      const count = players().length;
+      if (count >= MAX_PLAYERS) throw new Error('השולחן מלא');
+      const at = Math.min(Math.max(position ?? count, 0), count);
       for (const p of players().reverse()) if (p.seat >= at) await setSeat(p.id, p.seat + 1);
       return insertPlayer({ seat: at, name, amount, color, userId });
     },
@@ -246,7 +330,7 @@ function makeActions(view) {
     // A member takes their own seat: the tapped free seat, or (game on) the end of the table.
     // No buy-in here: in "רק מנהלים" mode only managers add buy-ins.
     async seatSelf(seat) {
-      const target = seat ?? (view.started ? view.players.length : firstFreeSeat(view.players));
+      const target = seat ?? (view.started ? players().length : firstFreeSeat(view.players));
       if (target === null) throw new Error('השולחן מלא');
       must(await supabase.from('table_players').insert({ table_id: tableId, user_id: view.myUserId, seat: target }));
     },
@@ -262,7 +346,7 @@ function makeActions(view) {
 
     async remove(player) {
       must(await supabase.from('table_players').delete().eq('id', player.id));
-      if (view.started) {
+      if (view.started && !player.out) {
         for (const p of players()) if (p.seat > player.seat) await setSeat(p.id, p.seat - 1);
       }
     },
@@ -298,11 +382,15 @@ function makeActions(view) {
       );
     },
 
-    // Left mid-game: the seat stays, the exit amount prefills the end-game screen.
-    // cash: { from, bills } left when leaving, or null.
+    // Left mid-game: the seat becomes free (the players after it close the gap),
+    // the exit amount (₪) prefills the end-game screen. cash: { from, bills } left when leaving, or null.
+    // A player who already left can have their exit changed: no seat to give up, and the new amount replaces any result.
     async markOut(player, kind, amount, cash = null) {
-      const out = { out_kind: kind, out_chips: exitChips(player, kind, amount) };
+      // The exit is now the result: an older end-game value for them goes away.
+      const out = { out_kind: kind, out_chips: exitChips(player, kind, amount), seat: null, final_value: null };
       must(await supabase.from('table_players').update(out).eq('id', player.id));
+      // Only a seated player frees a seat (careful: in JS, 1 > null is true).
+      if (!player.out) for (const p of players()) if (p.seat > player.seat) await setSeat(p.id, p.seat - 1);
       if (cash) await insertCash(cash);
     },
 
@@ -321,11 +409,14 @@ function makeActions(view) {
     },
 
     // "חזר לשחק": no exit and no result yet.
+    // Back in the game at the end of the table, if a seat is free.
     async markBack(player) {
+      const seat = players().length;
+      if (seat >= MAX_PLAYERS) throw new Error('אין כיסא פנוי – מישהו צריך לפנות מקום קודם');
       must(
         await supabase
           .from('table_players')
-          .update({ out_kind: null, out_chips: null, final_value: null })
+          .update({ out_kind: null, out_chips: null, final_value: null, seat })
           .eq('id', player.id)
       );
     },
@@ -358,16 +449,58 @@ function makeActions(view) {
       must(await supabase.from('poker_tables').update({ end_mode: mode }).eq('id', tableId));
     },
 
-    // chips: what the player left with (null clears it).
+    // chips: what the player left with (null clears it). For a player who left
+    // mid-game the end-game value IS the exit: it updates the exit (and can't be cleared).
     async setFinalChips(playerId, chips) {
+      const player = view.players.find((p) => p.id === playerId);
+      if (player?.out) {
+        if (chips === null || chips < 0) return;
+        const exit = exitFor(player, chips);
+        must(
+          await supabase
+            .from('table_players')
+            .update({ out_kind: exit.kind, out_chips: exit.chips, final_value: null })
+            .eq('id', playerId)
+        );
+        return;
+      }
       must(await supabase.from('table_players').update({ final_value: chips }).eq('id', playerId));
     },
 
-    // nets: the settled whole-shekel results ({ id, net }[]). One transaction:
-    // the database checks they add up to 0 and that only the manager ends the game.
-    async endGame(nets) {
+    // nets: the settled whole-shekel results ({ id, net }[]); transfers: who pays
+    // whom, as shown ({ from, to, amount, cash }[]). One transaction: the database
+    // checks the results add up to 0, the transfers match them, and that only the
+    // manager ends the game.
+    async endGame(nets, transfers) {
       const byId = Object.fromEntries(nets.map((e) => [e.id, e.net]));
-      must(await supabase.rpc('end_game', { p_table: tableId, p_nets: byId }));
+      const rows = transfers.map((t) => ({ from: t.from, to: t.to, amount: t.amount, cash: t.cash ?? 0 }));
+      const result = await supabase.rpc('end_game', { p_table: tableId, p_nets: byId, p_transfers: rows });
+      // Before the migration that stores transfers: close the old way.
+      if (result.error?.code === 'PGRST202') {
+        must(await supabase.rpc('end_game', { p_table: tableId, p_nets: byId }));
+        return;
+      }
+      must(result);
+    },
+
+    // "שולם ✓" (payer, receiver, managers; the database stamps who and when).
+    async setPaid(transferId, paid) {
+      must(
+        await supabase
+          .from('settlement_transfers')
+          .update({ paid_at: paid ? new Date().toISOString() : null })
+          .eq('id', transferId)
+      );
+    },
+
+    // The manager closes the settling by hand (it also closes by itself when everyone paid).
+    async closeSettling() {
+      must(
+        await supabase
+          .from('poker_tables')
+          .update({ settled_at: new Date().toISOString(), settled_manually: true })
+          .eq('id', tableId)
+      );
     },
 
     async reopen() {
@@ -382,7 +515,7 @@ function makeActions(view) {
 
 // PGRST116 = no row: the table was deleted, or this user isn't in it (any more).
 export function loadErrorText(e) {
-  return e?.code === 'PGRST116' ? 'השולחן לא זמין: הוא נמחק, או שאינך חבר בו.' : e?.message ?? String(e);
+  return friendlyError(e);
 }
 
 // { view, error, loading, live, actions, refresh }. Every action reloads the table

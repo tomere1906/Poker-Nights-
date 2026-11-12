@@ -82,11 +82,25 @@ export function cleanSettings(settings) {
 
 // How a player left mid-game. The same labels and icons as the quick results on
 // the end-game screen; the icon replaces the player's initials while they're out.
+// A player who left gives up their seat (seat: null) and is shown next to the table.
 export const EXITS = {
   lost_all: { icon: '💀', label: 'הפסיד הכל' },
   even: { icon: '🤝', label: 'מאוזן' },
-  amount: { icon: '💰', label: 'יצא עם סכום' },
+  amount: { icon: '🚪', label: 'יצא עם סכום' },
 };
+
+// Players sitting at the table (not those who left mid-game).
+export function seatedPlayers(players) {
+  return players.filter((p) => !p.out);
+}
+
+// The exit that matches what a player left with (₪): 0 = "הפסיד הכל",
+// their buy-ins = "מאוזן", anything else = "יצא עם סכום".
+export function exitFor(player, chips) {
+  if (chips === 0) return { kind: 'lost_all', chips: 0 };
+  if (chips === totalIn(player)) return { kind: 'even', chips };
+  return { kind: 'amount', chips };
+}
 
 // The chips a player leaves with for each exit kind (`amount` is typed in).
 export function exitChips(player, kind, amount = 0) {
@@ -115,6 +129,13 @@ export function potTotal(players) {
   return players.reduce((sum, p) => sum + totalIn(p), 0);
 }
 
+// "על השולחן": everything bought in tonight minus what players who left mid-game
+// took with them. "חזר לשחק" puts their amount back.
+export function onTableTotal(players) {
+  const taken = players.reduce((sum, p) => sum + (p.out ? p.out.chips : 0), 0);
+  return Math.max(0, potTotal(players) - taken);
+}
+
 export function initials(name) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -125,14 +146,23 @@ export function initials(name) {
 }
 
 // A player's profit/loss, or null if their result hasn't been entered.
+// One source per player: for a player who left mid-game it's the exit (what they
+// left with); for everyone else it's the end-game value in `finals`.
 export function netOf(state, player) {
+  if (player.out) return player.out.chips - totalIn(player);
   const value = state.finals[player.id];
   if (value === undefined) return null;
   return state.endMode === 'chips' ? value - totalIn(player) : value;
 }
 
+// Game on: the seated players take seats 0..n-1 in their order; those who left have none.
 function compactSeats(players) {
-  return [...players].sort((a, b) => a.seat - b.seat).map((p, i) => ({ ...p, seat: i }));
+  const order = new Map(
+    seatedPlayers(players)
+      .sort((a, b) => a.seat - b.seat)
+      .map((p, i) => [p.id, i])
+  );
+  return players.map((p) => ({ ...p, seat: order.get(p.id) ?? null }));
 }
 
 export function firstFreeSeat(players) {
@@ -156,14 +186,27 @@ export function normalizeState(state) {
   // Saves from before `started` existed with players seated were mid-game.
   const started = state.started ?? saved.length > 0;
   const players = started ? compactSeats(saved) : saved;
-  const finals = state.finals ?? {};
+  let finals = state.finals ?? {};
   // Saves from before endMode existed always held chip counts.
   const endMode = state.endMode ?? (Object.keys(finals).length > 0 ? 'chips' : 'net');
+  // Older saves kept a second copy of a leaver's result in finals (and it could
+  // differ from the exit): the end-game value was the newer one, so it becomes the exit.
+  const merged = players.map((p) => {
+    if (!p.out || !(p.id in finals)) return p;
+    const chips = endMode === 'chips' ? finals[p.id] : finals[p.id] + totalIn(p);
+    finals = withoutKey(finals, p.id);
+    return chips >= 0 ? { ...p, out: exitFor(p, chips) } : p;
+  });
   // Saves from before the start screen: a table with players is still open.
   const tableOpen = state.tableOpen ?? players.length > 0;
   const settings = cleanSettings(state.settings ?? DEFAULT_SETTINGS);
   const cash = Array.isArray(state.cash) ? state.cash : [];
-  return { ...initialState, ...state, players, started, finals, endMode, tableOpen, settings, cash };
+  return { ...initialState, ...state, players: merged, started, finals, endMode, tableOpen, settings, cash };
+}
+
+function withoutKey(obj, key) {
+  const { [key]: _, ...rest } = obj;
+  return rest;
 }
 
 function nextColor(players) {
@@ -194,8 +237,9 @@ export function gameReducer(state, action) {
     case 'addPlayer': {
       // Game on: position is the seat the new player takes; players from there on shift by one.
       const { name, amount } = action;
-      if (state.players.length >= MAX_PLAYERS) return state;
-      const position = Math.min(Math.max(action.position, 0), state.players.length);
+      const seated = seatedPlayers(state.players).length;
+      if (seated >= MAX_PLAYERS) return state;
+      const position = Math.min(Math.max(action.position, 0), seated);
       const shifted = state.players.map((p) => (p.seat >= position ? { ...p, seat: p.seat + 1 } : p));
       return { ...state, players: [...shifted, newPlayer(state, name, position, amount, action.at, action.color)] };
     }
@@ -228,27 +272,38 @@ export function gameReducer(state, action) {
         finals,
         cash: state.cash.filter((c) => c.from !== action.id),
         // During setup the seat just becomes free; once started, close the gap.
-        players: state.started ? rest.map((p) => (p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)) : rest,
+        // A player who left mid-game has no seat: nobody moves (in JS, 1 > null is true).
+        players:
+          state.started && !gone.out ? rest.map((p) => (!p.out && p.seat > gone.seat ? { ...p, seat: p.seat - 1 } : p)) : rest,
       };
     }
     case 'markOut': {
-      // The player keeps their seat; what they left with becomes their final result.
+      // The player gives up their seat (the others close the gap) and stays in the
+      // results; what they left with becomes their final result.
+      // A player who already left can have their exit changed (no seat to give up again).
       const player = state.players.find((p) => p.id === action.id);
       if (!player || !EXITS[action.kind]) return state;
       const chips = exitChips(player, action.kind, action.chips);
       return {
         ...state,
-        players: state.players.map((p) => (p.id === action.id ? { ...p, out: { kind: action.kind, chips } } : p)),
-        finals: { ...state.finals, [action.id]: state.endMode === 'chips' ? chips : chips - totalIn(player) },
+        players: state.players.map((p) => {
+          if (p.id === action.id) return { ...p, out: { kind: action.kind, chips }, seat: null };
+          return !player.out && !p.out && p.seat > player.seat ? { ...p, seat: p.seat - 1 } : p;
+        }),
+        // The exit is now the result: an older end-game value for them goes away.
+        finals: withoutKey(state.finals, action.id),
       };
     }
     case 'markBack': {
-      // Back in the game: no exit, no result yet.
+      // Back in the game at the end of the table (if there's a free seat): no exit, no result yet.
+      const player = state.players.find((p) => p.id === action.id);
+      const seated = seatedPlayers(state.players).length;
+      if (!player?.out || seated >= MAX_PLAYERS) return state;
       const { [action.id]: _, ...finals } = state.finals;
       return {
         ...state,
         finals,
-        players: state.players.map((p) => (p.id === action.id ? { ...p, out: null } : p)),
+        players: state.players.map((p) => (p.id === action.id ? { ...p, out: null, seat: seated } : p)),
       };
     }
     case 'addCash': {
@@ -271,17 +326,26 @@ export function gameReducer(state, action) {
     case 'moveSeat': {
       // Dropping onto another player swaps the two; onto an empty seat just moves.
       const mover = state.players.find((p) => p.id === action.id);
-      if (!mover || mover.seat === action.seat) return state;
+      if (!mover || mover.out || mover.seat === action.seat) return state;
       return {
         ...state,
         players: state.players.map((p) => {
           if (p.id === mover.id) return { ...p, seat: action.seat };
-          if (p.seat === action.seat) return { ...p, seat: mover.seat };
+          if (!p.out && p.seat === action.seat) return { ...p, seat: mover.seat };
           return p;
         }),
       };
     }
     case 'setFinal': {
+      // A player who left: the end-game value IS the exit (the strip and "על השולחן"
+      // follow it). Clearing it does nothing: they left with something.
+      const player = state.players.find((p) => p.id === action.id);
+      if (player?.out) {
+        if (action.amount === null) return state;
+        const chips = state.endMode === 'chips' ? action.amount : action.amount + totalIn(player);
+        if (chips < 0) return state;
+        return { ...state, players: state.players.map((p) => (p.id === player.id ? { ...p, out: exitFor(p, chips) } : p)) };
+      }
       const finals = { ...state.finals };
       if (action.amount === null) delete finals[action.id];
       else finals[action.id] = action.amount;

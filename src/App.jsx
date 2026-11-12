@@ -19,6 +19,7 @@ import JoinScreen from './components/JoinScreen.jsx';
 import StatsScreen from './components/StatsScreen.jsx';
 import LocalSettingsSheet from './components/LocalSettingsSheet.jsx';
 import { CardsIcon } from './components/Icons.jsx';
+import { friendlyError } from './lib/errors.js';
 
 // Matches the page background (html/body in index.css and the theme-color meta).
 const THEME_COLOR = '#0b1120';
@@ -85,6 +86,10 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {/* The status bar is see-through (black-translucent): a strip in the page color
+          behind the clock, so a page scrolled up (e.g. by the keyboard) slides under it
+          instead of mixing with the clock and battery. Sheets and toasts sit above it. */}
+      <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[env(safe-area-inset-top)] bg-[#0b1120]" />
       {needsName && <NameSetup profile={auth.profile} onSaved={auth.setProfile} />}
 
       {!needsName && invite && !auth.loading && (
@@ -117,7 +122,7 @@ export default function App() {
       )}
 
       {!needsName && !invite && screen === 'stats' && auth.session && (
-        <StatsScreen onBack={goHome} onOpenTable={openOnline} showToast={showToast} />
+        <StatsScreen userId={auth.session.user.id} onBack={goHome} onOpenTable={openOnline} showToast={showToast} />
       )}
 
       {!needsName && !invite && screen === 'profile' && auth.profile && (
@@ -144,7 +149,7 @@ export default function App() {
                 openOnline(await createOnlineTable(newSettings, buyInMode, tableName));
                 showToast('השולחן האונליין נפתח 🎉');
               } catch (e) {
-                showToast(`לא הצלחנו לפתוח שולחן: ${e.message}`);
+                showToast(`לא הצלחנו לפתוח שולחן: ${friendlyError(e)}`);
               }
               return;
             }
@@ -233,6 +238,7 @@ export default function App() {
 
       {!needsName && !invite && screen === 'game' && view === 'settle' && (
         <Settlement
+          showPodium
           players={players}
           entries={localNets}
           rounding={settings.rounding}

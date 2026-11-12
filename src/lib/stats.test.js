@@ -71,3 +71,30 @@ describe('tablemates', () => {
     expect(sortMates(mates, 'average').map((m) => m.key)).toEqual(['b', 'a', 'g']);
   });
 });
+
+describe('personalStats with imported nights', () => {
+  const imported = (n, net) => ({ tableId: `import:${n}`, imported: true, tableName: null, endedAt: day(n), net, buyInTotal: 0, buyInCount: 0, playerCount: null });
+  const s = personalStats([game(1, 100, 200, 2), imported(2, -300), game(3, -100, 100, 1), imported(4, 0), imported(5, 20)]);
+
+  it('count in the totals, the best/worst night and the streaks', () => {
+    expect(s.count).toBe(5);
+    expect(s.total).toBe(-280);
+    expect(s.worst.tableId).toBe('import:2');
+    expect(s.currentStreak).toBe(1);
+  });
+
+  it('wins, losses and break-even nights are all counted', () => {
+    expect(s).toMatchObject({ wins: 2, losses: 2, evens: 1 });
+  });
+
+  it('stats that need buy-ins come only from the games that have them', () => {
+    expect(s.withBuyIns).toBe(2);
+    expect(s.avgBuyIns).toBe(1.5);
+    expect(s.avgBuyInAmount).toBe(150);
+    expect(s.lostAll).toBe(1); // game 3: −100 of 100 put in
+  });
+
+  it('…and are null (not shown) when no game has buy-ins', () => {
+    expect(personalStats([imported(1, 50), imported(2, -50)])).toMatchObject({ withBuyIns: 0, avgBuyIns: null, avgBuyInAmount: null, lostAll: null });
+  });
+});

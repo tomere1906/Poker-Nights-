@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from './supabase.js';
+import { friendlyError } from './errors.js';
 
 // Google sends the user back to the app's own address (live site, localhost or
 // the LAN address), so the session lands in the same app that started the
@@ -83,6 +84,30 @@ export async function saveProfile(userId, { displayName, color }) {
   return data;
 }
 
+// The user's own phone for Bit ('' when none). Its own table, not profiles:
+// RLS shows it only to its owner and to people who have to transfer money to them.
+export async function loadMyPhone(userId) {
+  const { data, error } = await supabase.from('profile_phones').select('phone').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return data?.phone ?? '';
+}
+
+// phone: '05XXXXXXXX', or '' to delete it.
+export async function saveMyPhone(userId, phone) {
+  if (!phone) {
+    const { error } = await supabase.from('profile_phones').delete().eq('user_id', userId);
+    if (error) throw error;
+    return;
+  }
+  // No upsert: users may update only the phone column, not user_id.
+  const { data, error } = await supabase.from('profile_phones').update({ phone }).eq('user_id', userId).select('user_id');
+  if (error) throw error;
+  if (data.length === 0) {
+    const inserted = await supabase.from('profile_phones').insert({ user_id: userId, phone });
+    if (inserted.error) throw inserted.error;
+  }
+}
+
 // { loading, session, profile, error, setProfile }. With no Supabase config: signed out forever.
 export function useAuth() {
   const [auth, setAuth] = useState({ loading: Boolean(supabase), session: null, profile: null, error: readAuthError() });
@@ -98,7 +123,7 @@ export function useAuth() {
 
     // getSession() waits until a ?code=… from Google has been exchanged.
     supabase.auth.getSession().then(({ data, error }) => {
-      if (error && active) setAuth((a) => ({ ...a, error: error.message }));
+      if (error && active) setAuth((a) => ({ ...a, error: friendlyError(error) }));
       cleanAuthParams();
       apply(data.session);
     });
