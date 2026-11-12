@@ -5,8 +5,8 @@ import { formatCount } from './format.js';
 
 export const RESULT_UNITS = [
   { id: 'chips', label: 'צ׳יפים' },
-  { id: 'shekels', label: '₪' },
-  { id: 'net', label: 'רווח-הפסד' },
+  { id: 'shekels', label: 'כסף' },
+  { id: 'net', label: 'פלוס/מינוס' },
 ];
 
 // What the player leaves with (₪) from what was typed, or null if not complete.

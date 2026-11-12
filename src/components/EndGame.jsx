@@ -140,7 +140,7 @@ export default function EndGame({ state, onFinal, onBack, onSettle, onAddCash, o
       </div>
 
       <p className="mb-3 text-sm text-slate-400">
-        מה כל אחד אומר? בכל שורה בוחרים איך הוא מספר: צ׳יפים, ₪ ביד, או רווח-הפסד
+        מה כל אחד אומר? בכל שורה בוחרים איך הוא מספר: צ׳יפים, כסף או פלוס/מינוס
         {chipValue !== DEFAULT_CHIP_VALUE && ` (צ׳יפ שווה ${formatChipValue(chipValue)})`}
       </p>
 

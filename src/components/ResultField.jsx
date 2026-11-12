@@ -3,7 +3,7 @@ import { DEFAULT_CHIP_VALUE, shekelsToChips } from '../lib/game.js';
 import { formatCount, formatShekel, parseAmount } from '../lib/format.js';
 import { RESULT_UNITS, netText, resultShekels, resultShown as shown } from '../lib/result.js';
 
-// One field for a player's result, with a small "צ׳יפים / ₪ / רווח-הפסד" selector
+// One field for a player's result, with a small "צ׳יפים / כסף / פלוס/מינוס" selector
 // above it and the other forms under it. shekels: what they leave with (₪ or null);
 // onChange(₪ | null). unit / onUnit: the chosen input style (kept by the parent).
 // Converting uses the chip value and the player's total buy-ins.
@@ -86,7 +86,9 @@ export default function ResultField({
       onClick={() => chooseSign(value)}
       aria-label={value > 0 ? 'פלוס' : 'מינוס'}
       aria-pressed={sign === value}
-      className={`h-12 w-11 text-2xl font-extrabold transition ${sign === value ? on : 'bg-slate-950/60 text-slate-300'}`}
+      className={`w-10 rounded-xl text-2xl font-extrabold leading-none transition active:scale-95 ${
+        sign === value ? on : 'text-slate-300'
+      }`}
     >
       {label}
     </button>
@@ -111,7 +113,12 @@ export default function ResultField({
       </div>
       <div className="flex gap-2">
         {unit === 'net' && (
-          <div className={`flex shrink-0 overflow-hidden rounded-2xl ${amount > 0 && !sign ? 'ring-2 ring-amber-300' : ''}`}>
+          // One rounded pill as tall as the field, with two rounded buttons inside.
+          <div
+            className={`flex shrink-0 gap-1 rounded-2xl bg-slate-950/60 p-1 ring-2 ${
+              amount > 0 && !sign ? 'ring-amber-300' : 'ring-transparent'
+            }`}
+          >
             {signButton(1, '+', 'bg-emerald-400 text-slate-900')}
             {signButton(-1, '−', 'bg-rose-400 text-slate-900')}
           </div>

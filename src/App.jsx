@@ -85,6 +85,10 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {/* The status bar is see-through (black-translucent): a strip in the page color
+          behind the clock, so a page scrolled up (e.g. by the keyboard) slides under it
+          instead of mixing with the clock and battery. Sheets and toasts sit above it. */}
+      <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[env(safe-area-inset-top)] bg-[#0b1120]" />
       {needsName && <NameSetup profile={auth.profile} onSaved={auth.setProfile} />}
 
       {!needsName && invite && !auth.loading && (
