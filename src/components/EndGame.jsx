@@ -111,7 +111,11 @@ export default function EndGame({ state, onFinal, onBack, onSettle, onAddCash, o
   const diff = nets.reduce((sum, n) => sum + (n ?? 0), 0);
 
   // What a player leaves with (₪), or null before it's entered.
-  const shekelsOf = (p) => (p.id in finals ? (endMode === 'chips' ? finals[p.id] : finals[p.id] + totalIn(p)) : null);
+  // (netOf reads the exit for a player who left: one source per player.)
+  const shekelsOf = (p) => {
+    const net = netOf(state, p);
+    return net === null ? null : net + totalIn(p);
+  };
   const leaving = players.reduce((sum, p) => sum + (shekelsOf(p) ?? 0), 0);
 
   function setShekels(p, shekels) {

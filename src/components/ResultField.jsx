@@ -25,13 +25,21 @@ export default function ResultField({
   // The last value sent up: a change from elsewhere (a quick button, another
   // manager's phone) redraws the field; our own echo doesn't.
   const sent = useRef(shekels);
+  // While the field is being typed in, outside changes wait until it's left
+  // (so a player who left can't have their exit "cleared" mid-typing).
+  const typing = useRef(false);
+
+  function redraw(value) {
+    sent.current = value;
+    const s = shown(value, unit, totalIn, chipValue);
+    setText(s.amount === null ? '' : String(s.amount));
+    if (value !== null) setSign(s.sign);
+  }
 
   useEffect(() => {
-    if (shekels === sent.current) return;
-    sent.current = shekels;
-    const s = shown(shekels, unit, totalIn, chipValue);
-    setText(s.amount === null ? '' : String(s.amount));
-    if (shekels !== null) setSign(s.sign);
+    if (shekels === sent.current || typing.current) return;
+    redraw(shekels);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shekels, unit, totalIn, chipValue]);
 
   const amount = text.trim() === '' ? null : parseAmount(text);
@@ -132,6 +140,11 @@ export default function ResultField({
             enterKeyHint={enterKeyHint}
             value={text}
             onChange={(e) => type(e.target.value)}
+            onFocus={() => (typing.current = true)}
+            onBlur={() => {
+              typing.current = false;
+              if (shekels !== sent.current) redraw(shekels);
+            }}
             placeholder={unit === 'chips' ? 'כמה צ׳יפים' : unit === 'shekels' ? 'כמה ₪ ביד' : 'כמה ברווח / בהפסד'}
             className={`w-full rounded-2xl bg-slate-950/60 px-4 py-3 ${unit === 'chips' ? 'pe-16' : 'pe-10'} text-lg font-bold outline-none ring-2 placeholder:text-sm placeholder:font-normal placeholder:text-slate-500 focus:ring-emerald-400 ${
               tooBig ? 'ring-rose-400' : 'ring-transparent'

@@ -3,7 +3,7 @@
 // each user may actually do; the UI only hides what would be refused anyway.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './supabase.js';
-import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChips, firstFreeSeat, seatedPlayers, totalIn } from './game.js';
+import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChips, exitFor, firstFreeSeat, seatedPlayers, totalIn } from './game.js';
 import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
 
@@ -138,8 +138,9 @@ function toPlayer(row, buyIns) {
     out: row.out_kind ? { kind: row.out_kind, chips: row.out_chips } : null,
     // "לא כאן" set by hand on the settlement screen (null = automatic: whoever left).
     absent: row.absent ?? null,
-    // Chips the player left with, as entered on the end-game screen; else the exit amount.
-    finalChips: row.final_value ?? (row.out_kind ? row.out_chips : null),
+    // What the player leaves with (₪). One source per player: the exit for a
+    // player who left mid-game, the end-game value for everyone else.
+    finalChips: row.out_kind ? row.out_chips : row.final_value,
     finalNet: row.final_net,
   };
 }
@@ -332,8 +333,8 @@ function makeActions(view) {
     // the exit amount (₪) prefills the end-game screen. cash: { from, bills } left when leaving, or null.
     // A player who already left can have their exit changed: no seat to give up, and the new amount replaces any result.
     async markOut(player, kind, amount, cash = null) {
-      const out = { out_kind: kind, out_chips: exitChips(player, kind, amount), seat: null };
-      if (player.out) out.final_value = null;
+      // The exit is now the result: an older end-game value for them goes away.
+      const out = { out_kind: kind, out_chips: exitChips(player, kind, amount), seat: null, final_value: null };
       must(await supabase.from('table_players').update(out).eq('id', player.id));
       // Only a seated player frees a seat (careful: in JS, 1 > null is true).
       if (!player.out) for (const p of players()) if (p.seat > player.seat) await setSeat(p.id, p.seat - 1);
@@ -395,8 +396,21 @@ function makeActions(view) {
       must(await supabase.from('poker_tables').update({ end_mode: mode }).eq('id', tableId));
     },
 
-    // chips: what the player left with (null clears it).
+    // chips: what the player left with (null clears it). For a player who left
+    // mid-game the end-game value IS the exit: it updates the exit (and can't be cleared).
     async setFinalChips(playerId, chips) {
+      const player = view.players.find((p) => p.id === playerId);
+      if (player?.out) {
+        if (chips === null || chips < 0) return;
+        const exit = exitFor(player, chips);
+        must(
+          await supabase
+            .from('table_players')
+            .update({ out_kind: exit.kind, out_chips: exit.chips, final_value: null })
+            .eq('id', playerId)
+        );
+        return;
+      }
       must(await supabase.from('table_players').update({ final_value: chips }).eq('id', playerId));
     },
 

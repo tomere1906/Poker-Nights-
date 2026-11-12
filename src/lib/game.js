@@ -94,6 +94,14 @@ export function seatedPlayers(players) {
   return players.filter((p) => !p.out);
 }
 
+// The exit that matches what a player left with (₪): 0 = "הפסיד הכל",
+// their buy-ins = "מאוזן", anything else = "יצא עם סכום".
+export function exitFor(player, chips) {
+  if (chips === 0) return { kind: 'lost_all', chips: 0 };
+  if (chips === totalIn(player)) return { kind: 'even', chips };
+  return { kind: 'amount', chips };
+}
+
 // The chips a player leaves with for each exit kind (`amount` is typed in).
 export function exitChips(player, kind, amount = 0) {
   if (kind === 'lost_all') return 0;
@@ -138,7 +146,10 @@ export function initials(name) {
 }
 
 // A player's profit/loss, or null if their result hasn't been entered.
+// One source per player: for a player who left mid-game it's the exit (what they
+// left with); for everyone else it's the end-game value in `finals`.
 export function netOf(state, player) {
+  if (player.out) return player.out.chips - totalIn(player);
   const value = state.finals[player.id];
   if (value === undefined) return null;
   return state.endMode === 'chips' ? value - totalIn(player) : value;
@@ -175,14 +186,27 @@ export function normalizeState(state) {
   // Saves from before `started` existed with players seated were mid-game.
   const started = state.started ?? saved.length > 0;
   const players = started ? compactSeats(saved) : saved;
-  const finals = state.finals ?? {};
+  let finals = state.finals ?? {};
   // Saves from before endMode existed always held chip counts.
   const endMode = state.endMode ?? (Object.keys(finals).length > 0 ? 'chips' : 'net');
+  // Older saves kept a second copy of a leaver's result in finals (and it could
+  // differ from the exit): the end-game value was the newer one, so it becomes the exit.
+  const merged = players.map((p) => {
+    if (!p.out || !(p.id in finals)) return p;
+    const chips = endMode === 'chips' ? finals[p.id] : finals[p.id] + totalIn(p);
+    finals = withoutKey(finals, p.id);
+    return chips >= 0 ? { ...p, out: exitFor(p, chips) } : p;
+  });
   // Saves from before the start screen: a table with players is still open.
   const tableOpen = state.tableOpen ?? players.length > 0;
   const settings = cleanSettings(state.settings ?? DEFAULT_SETTINGS);
   const cash = Array.isArray(state.cash) ? state.cash : [];
-  return { ...initialState, ...state, players, started, finals, endMode, tableOpen, settings, cash };
+  return { ...initialState, ...state, players: merged, started, finals, endMode, tableOpen, settings, cash };
+}
+
+function withoutKey(obj, key) {
+  const { [key]: _, ...rest } = obj;
+  return rest;
 }
 
 function nextColor(players) {
@@ -266,7 +290,8 @@ export function gameReducer(state, action) {
           if (p.id === action.id) return { ...p, out: { kind: action.kind, chips }, seat: null };
           return !player.out && !p.out && p.seat > player.seat ? { ...p, seat: p.seat - 1 } : p;
         }),
-        finals: { ...state.finals, [action.id]: state.endMode === 'chips' ? chips : chips - totalIn(player) },
+        // The exit is now the result: an older end-game value for them goes away.
+        finals: withoutKey(state.finals, action.id),
       };
     }
     case 'markBack': {
@@ -312,6 +337,15 @@ export function gameReducer(state, action) {
       };
     }
     case 'setFinal': {
+      // A player who left: the end-game value IS the exit (the strip and "על השולחן"
+      // follow it). Clearing it does nothing: they left with something.
+      const player = state.players.find((p) => p.id === action.id);
+      if (player?.out) {
+        if (action.amount === null) return state;
+        const chips = state.endMode === 'chips' ? action.amount : action.amount + totalIn(player);
+        if (chips < 0) return state;
+        return { ...state, players: state.players.map((p) => (p.id === player.id ? { ...p, out: exitFor(p, chips) } : p)) };
+      }
       const finals = { ...state.finals };
       if (action.amount === null) delete finals[action.id];
       else finals[action.id] = action.amount;

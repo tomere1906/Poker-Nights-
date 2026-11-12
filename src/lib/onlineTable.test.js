@@ -95,6 +95,17 @@ describe('online results and exits', () => {
     expect(finalsFor(v.players, 'chips')).toEqual({ 'p-user': 120, 'p-guest': 0 });
   });
 
+  it('one source per player: for a player who left, the exit wins over a stale end-game value', () => {
+    const r = withResults();
+    r.players[0] = { ...r.players[0], final_value: 999 }; // an older value typed before he left
+    const v = toView(r, M);
+    const user = v.players.find((p) => p.id === 'p-user');
+    expect(user.finalChips).toBe(120);
+    expect(v.finals['p-user']).toBe(30);
+    // A seated player's result is the end-game value.
+    expect(v.players.find((p) => p.id === 'p-guest').finalChips).toBe(0);
+  });
+
   it('stores results as chips whatever the input mode', () => {
     const player = toView(withResults(), M).players.find((p) => p.id === 'p-user');
     expect(toChips(player, 30, 'net')).toBe(120);

@@ -363,6 +363,92 @@ describe('cash paid during the night', () => {
   });
 });
 
+describe('one source of truth per player (the last action wins)', () => {
+  // Three players, 100 each, game on; net mode unless said otherwise.
+  const game = (endMode = 'net') => ({ ...add(add(add(started, 'א', 0, 100), 'ב', 1, 100), 'ג', 2, 100), endMode });
+  const b = (s) => s.players[1];
+  const set = (s, amount) => gameReducer(s, { type: 'setFinal', id: b(s).id, amount });
+  const out = (s, kind, chips) => gameReducer(s, { type: 'markOut', id: b(s).id, kind, chips });
+  const back = (s) => gameReducer(s, { type: 'markBack', id: b(s).id });
+
+  it('end-game value, back to the table, then he leaves: the exit wins', () => {
+    let s = set(game(), 50); // +50 typed at the end
+    s = out(s, 'even');
+    expect(netOf(s, b(s))).toBe(0);
+    expect(b(s).id in s.finals).toBe(false);
+  });
+
+  it('he left, then the end-game value changes: the exit follows it (strip and "על השולחן" too)', () => {
+    let s = out(game(), 'amount', 100);
+    s = set(s, 60); // +60 at the end
+    expect(b(s).out).toEqual({ kind: 'amount', chips: 160 });
+    expect(netOf(s, b(s))).toBe(60);
+    expect(onTableTotal(s.players)).toBe(300 - 160);
+    expect(b(s).id in s.finals).toBe(false);
+    // 0 at the end = "הפסיד הכל"; his buy-ins = "מאוזן".
+    s = set(s, -100);
+    expect(b(s).out).toEqual({ kind: 'lost_all', chips: 0 });
+    s = set(s, 0);
+    expect(b(s).out).toEqual({ kind: 'even', chips: 100 });
+  });
+
+  it('in chips mode the end-game value is what he left with', () => {
+    let s = out(game('chips'), 'lost_all');
+    s = set(s, 250);
+    expect(b(s).out).toEqual({ kind: 'amount', chips: 250 });
+    expect(netOf(s, b(s))).toBe(150);
+  });
+
+  it('clearing the field of a player who left keeps his exit; a loss above his buy-ins is ignored', () => {
+    let s = out(game(), 'amount', 40);
+    expect(set(s, null)).toBe(s);
+    expect(set(s, -150)).toBe(s);
+    expect(netOf(s, b(s))).toBe(-60);
+  });
+
+  it('"חזר לשחק" clears everything: no exit, no result', () => {
+    let s = set(out(game(), 'amount', 40), 20);
+    s = back(s);
+    expect(b(s).out).toBeNull();
+    expect(netOf(s, b(s))).toBeNull();
+    // A new end-game value counts normally afterwards.
+    s = set(s, -30);
+    expect(netOf(s, b(s))).toBe(-30);
+  });
+
+  it('end-game → back to the table → a re-buy: the typed result stays as typed', () => {
+    let s = set(game(), -30); // net mode: "מינוס 30"
+    s = gameReducer(s, { type: 'addBuyIn', id: b(s).id, amount: 50 });
+    expect(netOf(s, b(s))).toBe(-30);
+    let c = set(game('chips'), 70); // chips mode: "left with 70"
+    c = gameReducer(c, { type: 'addBuyIn', id: b(c).id, amount: 50 });
+    expect(netOf(c, b(c))).toBe(70 - 150);
+  });
+
+  it('adding and removing players after results were typed', () => {
+    let s = set(game(), 20);
+    s = add(s, 'ד', 3, 100);
+    expect(netOf(s, s.players[3])).toBeNull(); // the newcomer has no result yet
+    s = gameReducer(s, { type: 'removePlayer', id: b(s).id });
+    expect(Object.keys(s.finals)).toEqual([]);
+  });
+
+  it('old saves with two different values for a leaver keep the end-game one', () => {
+    const s = normalizeState({
+      started: true,
+      tableOpen: true,
+      endMode: 'net',
+      finals: { b: 40 },
+      players: [
+        { id: 'a', name: 'א', seat: 0, color: 0, buyIns: [100] },
+        { id: 'b', name: 'ב', seat: 1, color: 1, buyIns: [100], out: { kind: 'amount', chips: 90 } },
+      ],
+    });
+    expect(s.players[1].out).toEqual({ kind: 'amount', chips: 140 });
+    expect(s.finals).toEqual({});
+  });
+});
+
 describe('leaving mid-game frees the seat', () => {
   const full = () => {
     let s = started;
@@ -381,7 +467,7 @@ describe('leaving mid-game frees the seat', () => {
     // Seated players hold seats 0..8 with no gaps; the one who left has none and stays in the game.
     expect(seatedPlayers(s.players).map((p) => p.seat).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     expect(named(s, 'p3').seat).toBeNull();
-    expect(s.finals[named(s, 'p3').id]).toBe(-50);
+    expect(netOf(s, named(s, 'p3'))).toBe(-50);
   });
 
   it('"חזר לשחק" needs a free seat', () => {
@@ -467,7 +553,7 @@ describe('leaving mid-game', () => {
   it('"מאוזן" leaves with what they put in', () => {
     const s = out(game('chips'), 'even');
     expect(s.players[0].out).toEqual({ kind: 'even', chips: 200 });
-    expect(s.finals[s.players[0].id]).toBe(200);
+    expect(s.players[0].out.chips).toBe(200); // the exit is the result (no copy in finals)
     expect(netOf(s, s.players[0])).toBe(0);
   });
 
