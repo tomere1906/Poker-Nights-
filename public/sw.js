@@ -2,7 +2,8 @@
 // Paths are relative to this file, so it works under any base path (e.g. GitHub Pages).
 // v4: new logo/app icons (icons are cache-first, so a new name drops the old ones).
 // v5: other pages (privacy, terms) are cached under their own address, never as the app.
-const CACHE = 'poker-nights-v5';
+// v6: the 2026-11 release (settling, Bit, imports…); the app now reloads itself when a new worker takes over.
+const CACHE = 'poker-nights-v6';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {

@@ -1,0 +1,228 @@
+{
+ "midGame": {
+  "tableOpen": true,
+  "settings": {
+   "initialBuyIn": 100,
+   "rebuyAmounts": [
+    100,
+    200
+   ],
+   "rounding": 10,
+   "chipValue": 0.5
+  },
+  "players": [
+   {
+    "id": "mwdjcy1ldwe31",
+    "name": "דני",
+    "seat": 0,
+    "color": 0,
+    "buyIns": [
+     100
+    ],
+    "buyInTimes": [
+     1794081600000
+    ]
+   },
+   {
+    "id": "mwdjcy1l0duhu",
+    "name": "רון",
+    "seat": 1,
+    "color": 1,
+    "buyIns": [
+     100,
+     200
+    ],
+    "buyInTimes": [
+     1794081660000,
+     1794085200000
+    ],
+    "out": {
+     "kind": "lost_all",
+     "chips": 0
+    }
+   },
+   {
+    "id": "mwdjcy1l8nrw7",
+    "name": "מאיה",
+    "seat": 2,
+    "color": 2,
+    "buyIns": [
+     100
+    ],
+    "buyInTimes": [
+     1794081720000
+    ],
+    "out": {
+     "kind": "amount",
+     "chips": 160
+    }
+   },
+   {
+    "id": "mwdjcy1lgprc9",
+    "name": "עידו",
+    "seat": 3,
+    "color": 3,
+    "buyIns": [
+     100,
+     100
+    ],
+    "buyInTimes": [
+     1794081780000,
+     1794087000000
+    ]
+   }
+  ],
+  "view": "table",
+  "started": true,
+  "finals": {
+   "mwdjcy1l0duhu": 0,
+   "mwdjcy1l8nrw7": 160
+  },
+  "endMode": "chips",
+  "cash": [
+   {
+    "id": "mwdjcy1lahlr5",
+    "from": "mwdjcy1l0duhu",
+    "amount": 200
+   }
+  ]
+ },
+ "endGame": {
+  "tableOpen": true,
+  "settings": {
+   "initialBuyIn": 100,
+   "rebuyAmounts": [
+    100,
+    200
+   ],
+   "rounding": 10,
+   "chipValue": 0.5
+  },
+  "players": [
+   {
+    "id": "mwdjcy1ldwe31",
+    "name": "דני",
+    "seat": 0,
+    "color": 0,
+    "buyIns": [
+     100
+    ],
+    "buyInTimes": [
+     1794081600000
+    ]
+   },
+   {
+    "id": "mwdjcy1l0duhu",
+    "name": "רון",
+    "seat": 1,
+    "color": 1,
+    "buyIns": [
+     100,
+     200
+    ],
+    "buyInTimes": [
+     1794081660000,
+     1794085200000
+    ],
+    "out": {
+     "kind": "lost_all",
+     "chips": 0
+    }
+   },
+   {
+    "id": "mwdjcy1l8nrw7",
+    "name": "מאיה",
+    "seat": 2,
+    "color": 2,
+    "buyIns": [
+     100
+    ],
+    "buyInTimes": [
+     1794081720000
+    ],
+    "out": {
+     "kind": "amount",
+     "chips": 160
+    }
+   },
+   {
+    "id": "mwdjcy1lgprc9",
+    "name": "עידו",
+    "seat": 3,
+    "color": 3,
+    "buyIns": [
+     100,
+     100
+    ],
+    "buyInTimes": [
+     1794081780000,
+     1794087000000
+    ]
+   }
+  ],
+  "view": "end",
+  "started": true,
+  "finals": {
+   "mwdjcy1l0duhu": 0,
+   "mwdjcy1l8nrw7": 160,
+   "mwdjcy1ldwe31": 260,
+   "mwdjcy1lgprc9": 280
+  },
+  "endMode": "chips",
+  "cash": [
+   {
+    "id": "mwdjcy1lahlr5",
+    "from": "mwdjcy1l0duhu",
+    "amount": 200
+   }
+  ]
+ },
+ "v1": {
+  "players": [
+   {
+    "id": "mwdjcy1m47mnv",
+    "name": "אסף",
+    "seat": 0,
+    "color": 0,
+    "buyIns": [
+     50
+    ],
+    "buyInTimes": [
+     null
+    ]
+   },
+   {
+    "id": "mwdjcy1mu13fr",
+    "name": "שקד",
+    "seat": 1,
+    "color": 1,
+    "buyIns": [
+     50
+    ],
+    "buyInTimes": [
+     null
+    ]
+   },
+   {
+    "id": "mwdjcy1mchuev",
+    "name": "בן",
+    "seat": 2,
+    "color": 2,
+    "buyIns": [
+     50,
+     100
+    ],
+    "buyInTimes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "view": "end",
+  "started": true,
+  "finals": {
+   "mwdjcy1m47mnv": 70
+  },
+  "endMode": "net"
+ }
+}

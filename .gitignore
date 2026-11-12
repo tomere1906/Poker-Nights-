@@ -6,3 +6,6 @@ dist
 
 # Session tokens for supabase/tests/attack_test.mjs. Never commit.
 .attack-tokens.json
+
+# The promo video experiment (not part of the app; the repo is public).
+promo/

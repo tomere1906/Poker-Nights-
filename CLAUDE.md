@@ -28,7 +28,8 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 ## Deployment
 - GitHub Pages via `.github/workflows/deploy.yml`: every push to `main` runs the tests, builds, and deploys.
 - The app lives at `/Poker-Nights-/` (Vite `base`). Keep manifest, icon and service-worker paths relative (or `%BASE_URL%` in `index.html`) so the PWA works under that path.
-- Bump `CACHE` in `public/sw.js` when its caching logic changes.
+- **Bump `CACHE` in `public/sw.js` on every release to `main`** (not only when its caching logic changes). A changed `sw.js` is how phones learn there's a new version: the app asks for it each time it comes back to the front (`registration.update()` on `visibilitychange`, `src/main.jsx`) and reloads once when the new worker takes over (`controllerchange`; not on the very first install). The open table comes back by itself after the reload. Pages are network-first, so a fresh open always gets the new version anyway.
+- Local games saved by older versions must keep opening: `src/lib/legacySaves.test.js` loads saves made by the older versions' own code (`src/lib/fixtures/legacy-saves.json`: the live version before the 2026-11 release, and v1). Never change those fixtures to make a test pass.
 - Commits use the GitHub noreply email, never the personal Gmail.
 
 ## Language & RTL (always)
