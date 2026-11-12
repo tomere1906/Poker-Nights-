@@ -237,6 +237,7 @@ export default function App() {
 
       {!needsName && !invite && screen === 'game' && view === 'settle' && (
         <Settlement
+          showPodium
           players={players}
           entries={localNets}
           rounding={settings.rounding}

@@ -7,6 +7,7 @@ import { initials } from './game.js';
 import { paletteColor } from './colors.js';
 import { splitName } from './names.js';
 import { cashParts } from './settlement.js';
+import { MEDALS, podium, podiumOrder } from './podium.js';
 
 export const CARD_WIDTH = 390; // CSS px, like a phone screen
 const PAD = 16;
@@ -133,6 +134,84 @@ function nameWidth(ctx, name, fonts) {
 
 const rowHeight = () => ROW_H;
 
+// The podium block: steps by place, columns 112 px wide, 1st in the middle.
+const PODIUM_STEP = { 1: 62, 2: 44, 3: 32 };
+const PODIUM_COL = 108;
+const PODIUM_GAP = 10;
+const PODIUM_NAME_H = 18;
+const podiumAvatarR = (place) => (place === 1 ? 21 : 17);
+
+// What one column needs above its step: avatars, names (one line each), the amount.
+function podiumColumnH(p) {
+  return 2 * podiumAvatarR(p.place) + 8 + Math.min(p.ids.length, 3) * PODIUM_NAME_H + 24;
+}
+
+// Height of the whole podium card (0 when nobody won).
+export function podiumHeight(places) {
+  const filled = places.filter(Boolean);
+  if (filled.length === 0) return 0;
+  return 36 + Math.max(...filled.map((p) => podiumColumnH(p) + PODIUM_STEP[p.place]));
+}
+
+function drawPodium(ctx, places, players, top, height) {
+  ctx.fillStyle = 'rgba(30, 41, 59, 0.7)';
+  roundRect(ctx, PAD, top, CARD_WIDTH - 2 * PAD, height, 24);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = `700 14px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🏆 הפודיום של הערב', CARD_WIDTH / 2, top + 20);
+
+  // The steps stand on the card's bottom edge: keep them inside its rounded corners.
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(PAD, top, CARD_WIDTH - 2 * PAD, height, 24);
+  ctx.clip();
+  const bottom = top + height;
+  const total = places.length * PODIUM_COL + (places.length - 1) * PODIUM_GAP;
+  // Left to right like a real podium seen from the audience: 2nd, 1st, 3rd.
+  places.forEach((p, i) => {
+    if (!p) return; // an empty spot keeps 1st in the middle
+    const medal = MEDALS[p.place];
+    const x = (CARD_WIDTH - total) / 2 + i * (PODIUM_COL + PODIUM_GAP);
+    const cx = x + PODIUM_COL / 2;
+    const stepTop = bottom - PODIUM_STEP[p.place];
+    const step = ctx.createLinearGradient(0, stepTop, 0, bottom);
+    step.addColorStop(0, `${medal.color}55`);
+    step.addColorStop(1, `${medal.color}18`);
+    ctx.fillStyle = step;
+    ctx.beginPath();
+    ctx.roundRect(x, stepTop, PODIUM_COL, PODIUM_STEP[p.place], [14, 14, 0, 0]);
+    ctx.fill();
+    ctx.fillStyle = `${medal.color}aa`;
+    ctx.fillRect(x + 10, stepTop, PODIUM_COL - 20, 2);
+    ctx.font = `400 24px ${FONT}`;
+    ctx.fillText(medal.icon, cx, stepTop + 18);
+
+    // Above the step, bottom up: the amount, the names, the avatars.
+    let y = stepTop - 14;
+    ctx.fillStyle = COLORS.win.fg;
+    ctx.font = `800 15px ${FONT}`;
+    ctx.fillText(signed(p.net), cx, y);
+    const ids = p.ids.slice(0, 3);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = `700 14px ${FONT}`;
+    y -= 6 + PODIUM_NAME_H * ids.length;
+    ids.forEach((id, k) => {
+      const name = players.get(id)?.name ?? 'שחקן';
+      ctx.fillText(ellipsize(name, PODIUM_COL - 6, (t) => ctx.measureText(t).width), cx, y + PODIUM_NAME_H * (k + 0.5));
+    });
+    const r = podiumAvatarR(p.place);
+    const spread = r * 1.2;
+    const cy = y - 4 - r;
+    ids.forEach((id, k) => {
+      // On the podium everyone shows their initials (not the "left mid-game" icon).
+      avatar(ctx, { ...players.get(id), out: null }, cx + (k - (ids.length - 1) / 2) * spread, cy, r);
+    });
+  });
+  ctx.restore();
+}
+
 // Draws colored pieces of one line, centered on cx (RTL: the first piece on the right).
 function drawPieces(ctx, pieces, cx, y, font) {
   ctx.font = font;
@@ -147,7 +226,7 @@ function drawPieces(ctx, pieces, cx, y, font) {
   });
 }
 
-// data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }], players: Map(id -> player) }
+// data: { title, subtitle, transfers: [{ from, to, amount, cash }], nets: [{ id, net }], players: Map(id -> player), podium? }
 export function drawSettlement(data, scale = 3) {
   const measure = document.createElement('canvas').getContext('2d');
   const nameOf = (id) => data.players.get(id)?.name ?? 'שחקן';
@@ -161,7 +240,9 @@ export function drawSettlement(data, scale = 3) {
   const pillLines = layoutPills(sorted, pillMax, pillWidth);
   const pillLineH = (line) => (line.some((p) => splitName(nameOf(p.item.id)).rest) ? PILL_TWO_LINES_H : PILL_H);
 
-  const headerH = 96;
+  const places = data.podium ? podiumOrder(podium(data.nets)) : [];
+  const podiumH = podiumHeight(places);
+  const headerH = 96 + (podiumH ? podiumH + 12 : 0);
   const listH = data.transfers.length
     ? data.transfers.reduce((sum, t) => sum + rowHeight(t) + ROW_GAP, 0) - ROW_GAP
     : 64;
@@ -193,6 +274,8 @@ export function drawSettlement(data, scale = 3) {
   ctx.fillStyle = COLORS.muted;
   ctx.font = `400 15px ${FONT}`;
   ctx.fillText(ellipsize(data.subtitle, CARD_WIDTH - 2 * PAD, (t) => ctx.measureText(t).width), right, 72);
+
+  if (podiumH) drawPodium(ctx, places, data.players, 96, podiumH);
 
   // Rows: payer → receiver, the amount, and a small cash note when there is one.
   let y = headerH;
@@ -297,13 +380,13 @@ export function drawSettlement(data, scale = 3) {
 
 // The PNG, after the app font has loaded (otherwise the canvas would use a fallback font).
 // subtitle: the line under the title, as on the screen (table name · date · rounding).
-export async function renderSettlementPng({ subtitle, date, transfers, nets, players }) {
+export async function renderSettlementPng({ subtitle, date, transfers, nets, players, podium: withPodium = false }) {
   try {
     await Promise.all([document.fonts.load(`800 26px Rubik`), document.fonts.load(`700 16px Rubik`), document.fonts.load(`400 15px Rubik`)]);
   } catch {
     // Offline or blocked: draw with the fallback font.
   }
-  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, players });
+  const canvas = drawSettlement({ title: 'מי מעביר למי', subtitle, transfers, nets, players, podium: withPodium });
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('לא הצלחנו ליצור את התמונה');
   return new File([blob], imageFileName(date), { type: 'image/png' });

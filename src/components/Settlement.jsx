@@ -4,6 +4,7 @@ import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
 import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
+import Podium from './Podium.jsx';
 import RoundingPicker from './RoundingPicker.jsx';
 
 // "משחק חדש" for the local table: wipes the game after a second tap.
@@ -121,7 +122,8 @@ function RowFooter({ row, canMark, onTogglePaid, phone, onBit }) {
 // shown instead of recomputing, with "N מתוך M שולמו" on top. canMark(row) /
 // onTogglePaid(row, paid): "שולם ✓". phoneFor(row): the receiver's number for
 // the viewer (only the payer gets one), onBit(row, phone): copy it and open Bit.
-// children: extra buttons under "share".
+// showPodium: the night's top 3 winners on top (once the table is closed;
+// also in the shared image). children: extra buttons under "share".
 export default function Settlement({
   players,
   entries,
@@ -139,6 +141,7 @@ export default function Settlement({
   onTogglePaid = null,
   phoneFor = null,
   onBit = null,
+  showPodium = false,
   onBack,
   children,
 }) {
@@ -166,18 +169,18 @@ export default function Settlement({
   useEffect(() => {
     let active = true;
     setFile(null);
-    renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId })
+    renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId, podium: showPodium })
       .then((f) => active && setFile(f))
       .catch(() => active && setFile(null));
     return () => {
       active = false;
     };
-  }, [details, when, transfers, nets, byId]);
+  }, [details, when, transfers, nets, byId, showPodium]);
 
   async function share() {
     setShareState('working');
     try {
-      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId }));
+      const image = file ?? (await renderSettlementPng({ subtitle: details, date: when, transfers, nets, players: byId, podium: showPodium }));
       const result = await shareOrDownload(image);
       setShareState(result === 'downloaded' ? 'downloaded' : null);
       if (result === 'downloaded') setTimeout(() => setShareState(null), 2500);
@@ -207,6 +210,8 @@ export default function Settlement({
       </div>
 
       {notice}
+
+      {showPodium && <Podium nets={nets} byId={byId} />}
 
       {onRoundingChange && (
         <div className="mb-4 rounded-3xl bg-slate-800/70 p-3 ring-1 ring-white/5">

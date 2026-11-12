@@ -235,6 +235,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
   if (view.ended) {
     body = (
       <Settlement
+        showPodium
         players={view.players}
         entries={entries}
         rounding={view.settings.rounding}
