@@ -6,7 +6,7 @@
 **Live app:** https://tomere1906.github.io/Poker-Nights-/ (Hebrew, mobile first, installable to the home screen)
 
 <p align="center">
-  <img src="docs/images/demo.gif" width="300" alt="A buy-in arrives live from a friend's phone, the game ends, and the app shows who pays whom">
+  <img src="docs/images/demo.gif" width="300" alt="A buy-in arrives live from a friend's phone, the game ends, the app shows who pays whom, and closing the table brings up the night's podium">
 </p>
 
 <p align="center"><sub>All screenshots use made-up demo players.</sub></p>

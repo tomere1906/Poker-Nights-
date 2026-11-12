@@ -151,6 +151,7 @@ Build in steps and stop for the user's confirmation after each step.
 
 ## Names & colors (rules)
 - Colors follow the same logic as names: `profiles.color` is the user's own pick (a palette of 12 clear, distinct colors, stored as an index 0-11; append only, never reorder). The manager may override it per table (`table_players.color`, null = use the profile color); guests always get a manager-chosen color. Users change only their own profile color; only the table's manager writes per-table colors.
+- **Top spacing:** every screen starts 1rem below the strip behind the iPhone clock (`pt-[calc(env(safe-area-inset-top)+1rem)]` on the app wrapper in `App.jsx`; the toast sits 0.75rem below it). Never `max(1rem, safe-area)`: on notch / Dynamic Island iPhones that glues the first card to the strip, and the slightest scroll cuts it.
 - The page background/theme color is `#0b1120` on every screen. Never let a colored element sit flush against the bottom edge of the viewport (iOS Safari tints its toolbar from it), and remove full-screen overlays (confetti) when they finish.
 
 ### Names
