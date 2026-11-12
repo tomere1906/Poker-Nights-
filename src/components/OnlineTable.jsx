@@ -15,6 +15,7 @@ import { formatPhone } from '../lib/phone.js';
 import { saveMyPhone } from '../lib/auth.js';
 import PhonePrompt from './PhonePrompt.jsx';
 import { CardsIcon } from './Icons.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const HEADER_BUTTON = 'rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 active:scale-95';
 const BIG_BUTTON = 'w-full rounded-2xl py-4 text-lg font-extrabold transition active:scale-[0.98]';
@@ -121,7 +122,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
   }, [waitingForPhone, refresh]);
   const [panel, setPanel] = useState(null); // null | 'log' | 'manage' | 'invite'
   const [step, setStep] = useState('table'); // 'table' | 'end' | 'settle' (managers, before closing)
-  const fail = (e) => showToast(`הפעולה נכשלה: ${e.message ?? e}`);
+  const fail = (e) => showToast(friendlyError(e));
 
   // Confetti for everyone at the table when the manager closes it.
   const wasEnded = useRef(null);
@@ -389,7 +390,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
           view={view}
           actions={actions}
           onClose={() => setPanel(null)}
-          onError={(message) => showToast(`הפעולה נכשלה: ${message}`)}
+          onError={(message) => showToast(message)}
           onDeleted={() => {
             showToast('השולחן נמחק');
             onHome();

@@ -6,6 +6,7 @@ import AddPlayerSheet from './AddPlayerSheet.jsx';
 import PlayerSheet from './PlayerSheet.jsx';
 import BottomSheet from './BottomSheet.jsx';
 import LeftPlayers from './LeftPlayers.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const PRIMARY =
   'flex-1 rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none';
@@ -50,7 +51,7 @@ export default function TableScreen({
       await fn();
       if (success) showToast(success);
     } catch (e) {
-      showToast(`הפעולה נכשלה: ${e.message}`);
+      showToast(friendlyError(e));
     }
   }
 

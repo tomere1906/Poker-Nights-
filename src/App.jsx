@@ -19,6 +19,7 @@ import JoinScreen from './components/JoinScreen.jsx';
 import StatsScreen from './components/StatsScreen.jsx';
 import LocalSettingsSheet from './components/LocalSettingsSheet.jsx';
 import { CardsIcon } from './components/Icons.jsx';
+import { friendlyError } from './lib/errors.js';
 
 // Matches the page background (html/body in index.css and the theme-color meta).
 const THEME_COLOR = '#0b1120';
@@ -148,7 +149,7 @@ export default function App() {
                 openOnline(await createOnlineTable(newSettings, buyInMode, tableName));
                 showToast('השולחן האונליין נפתח 🎉');
               } catch (e) {
-                showToast(`לא הצלחנו לפתוח שולחן: ${e.message}`);
+                showToast(`לא הצלחנו לפתוח שולחן: ${friendlyError(e)}`);
               }
               return;
             }

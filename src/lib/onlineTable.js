@@ -6,6 +6,7 @@ import { supabase } from './supabase.js';
 import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChips, exitFor, firstFreeSeat, seatedPlayers, totalIn } from './game.js';
 import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
+import { friendlyError } from './errors.js';
 
 const TABLE_COLUMNS =
   'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, chip_value, buy_in_mode, end_mode, invite_code, created_at, ended_at, settled_at, settled_manually';
@@ -514,7 +515,7 @@ function makeActions(view) {
 
 // PGRST116 = no row: the table was deleted, or this user isn't in it (any more).
 export function loadErrorText(e) {
-  return e?.code === 'PGRST116' ? 'השולחן לא זמין: הוא נמחק, או שאינך חבר בו.' : e?.message ?? String(e);
+  return friendlyError(e);
 }
 
 // { view, error, loading, live, actions, refresh }. Every action reloads the table

@@ -3,6 +3,7 @@ import { joinTable } from '../lib/onlineTable.js';
 import { clearPendingInvite, isValidInvite } from '../lib/invite.js';
 import AccountBar from './AccountBar.jsx';
 import { CardsIcon } from './Icons.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 // Shown while there's a pending invite. Signed out: ask to sign in with Google.
 // Signed in: join the table (RLS checks the code) and open it.
@@ -28,7 +29,7 @@ export default function JoinScreen({ invite, auth, onJoined, onCancel }) {
       })
       .catch((e) => {
         clearPendingInvite();
-        setError(e.code === '42501' ? 'הקישור לא תקף, או שהמשחק בשולחן הזה כבר נגמר.' : e.message);
+        setError(e.code === '42501' ? 'הקישור לא תקף, או שהמשחק בשולחן הזה כבר נגמר.' : friendlyError(e));
       });
   }, [signedIn, invite, onJoined]);
 

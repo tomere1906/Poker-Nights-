@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from './supabase.js';
+import { friendlyError } from './errors.js';
 
 // Google sends the user back to the app's own address (live site, localhost or
 // the LAN address), so the session lands in the same app that started the
@@ -122,7 +123,7 @@ export function useAuth() {
 
     // getSession() waits until a ?code=… from Google has been exchanged.
     supabase.auth.getSession().then(({ data, error }) => {
-      if (error && active) setAuth((a) => ({ ...a, error: error.message }));
+      if (error && active) setAuth((a) => ({ ...a, error: friendlyError(error) }));
       cleanAuthParams();
       apply(data.session);
     });

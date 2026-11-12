@@ -3,6 +3,7 @@ import { PALETTE, suggestedColor } from '../lib/colors.js';
 import { MAX_NAME_LENGTH, loadMyPhone, saveMyPhone, saveProfile } from '../lib/auth.js';
 import { cleanPhone, formatPhone } from '../lib/phone.js';
 import Avatar from './Avatar.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 // Name + color picker for the signed-in user's own profile. withPhone: also the
 // optional phone number for Bit (the profile screen, not the first sign-in).
@@ -52,7 +53,7 @@ export default function ProfileForm({ profile, submitLabel, onSaved, withPhone =
       }
       onSaved(await saveProfile(profile.id, { displayName: trimmed, color }));
     } catch (err) {
-      setError(err.message);
+      setError(friendlyError(err));
       setBusy(false);
     }
   }

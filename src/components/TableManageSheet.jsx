@@ -6,6 +6,7 @@ import ChipValuePicker from './ChipValuePicker.jsx';
 import { AmountsForm } from './AmountsEditor.jsx';
 import { formatShekel } from '../lib/format.js';
 import { MAX_TABLE_NAME, cleanTableName } from '../lib/onlineTable.js';
+import { friendlyError } from '../lib/errors.js';
 
 const MODES = [
   { id: 'managers', title: 'רק מנהלים', hint: 'רק המנהל והמנהלים המשותפים מוסיפים כניסות' },
@@ -24,7 +25,7 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
     try {
       await fn();
     } catch (e) {
-      onError(e.message);
+      onError(friendlyError(e));
     }
   }
 
@@ -68,7 +69,7 @@ export default function TableManageSheet({ view, actions, onDeleted, onClose, on
               settings={view.settings}
               onSave={(amounts) =>
                 actions.setAmounts(amounts).catch((e) => {
-                  onError(e.message);
+                  onError(friendlyError(e));
                   throw e;
                 })
               }

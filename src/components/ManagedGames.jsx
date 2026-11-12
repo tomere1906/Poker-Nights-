@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RECENT_DAYS, deleteGame, hideFromManagedList, listRecentGames, recentManagedGames } from '../lib/onlineTable.js';
 import { formatDate } from '../lib/format.js';
 import BottomSheet from './BottomSheet.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 function status(t) {
   if (!t.settled_at) {
@@ -88,7 +89,7 @@ export default function ManagedGames({ userId, onOpenTable, onDeleted = () => {}
       showToast(success);
       after();
     } catch (e) {
-      showToast(`הפעולה נכשלה: ${e.message}`);
+      showToast(friendlyError(e));
     }
     await reload();
   }

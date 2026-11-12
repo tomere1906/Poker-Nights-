@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from '../lib/supabase.js';
 import { listOpenTables } from '../lib/onlineTable.js';
 import { CardsIcon, ChipIcon } from './Icons.jsx';
 import AccountBar from './AccountBar.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const PRIMARY =
   'w-full rounded-3xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-xl shadow-emerald-400/25 transition active:scale-[0.98]';
@@ -31,7 +32,7 @@ function OnlineSection({ auth, onContinueOnline, onNewOnline, onOpenStats }) {
     if (!signedIn) return;
     listOpenTables()
       .then(setTables)
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(friendlyError(e)));
   }, [signedIn]);
 
   // A game being played, and games that ended but are still open for settling.

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { cleanPhone } from '../lib/phone.js';
+import { friendlyError } from '../lib/errors.js';
 
 // On a closed table, for a winner who should get at least one transfer (not
 // only cash) and has no phone number saved: save one right here, so the payers
@@ -21,7 +22,7 @@ export default function PhonePrompt({ onSave, onLater }) {
     try {
       await onSave(cleaned);
     } catch (err) {
-      setError(err.message ?? String(err));
+      setError(friendlyError(err));
       setBusy(false);
     }
   }

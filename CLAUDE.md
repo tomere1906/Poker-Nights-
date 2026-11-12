@@ -39,6 +39,7 @@ The user plays on their phone at the table. Everything must be quick, simple, an
 - Currency: number then ₪ (e.g. `150 ₪`).
 - Player names may be typed in Hebrew and must display correctly.
 - Code, comments, file names and commit messages stay in English.
+- **Never show raw technical (English) errors to users.** Every error shown goes through `friendlyError` (`src/lib/errors.js`, tested): a short Hebrew message by Postgres/PostgREST code and the database's own messages (a taken seat → "הכיסא הזה כבר נתפס. בחר כיסא אחר 🪑", no connection → "אין חיבור לאינטרנט, נסה שוב", RLS → "אין לך הרשאה לפעולה הזו", manager-only, ended game, deleted table, expired sign-in, import limit…); the app's own Hebrew errors pass through; anything else → "משהו השתבש, נסה שוב". Online actions reload the table even when they fail (`useOnlineTable`), so e.g. a seat someone else just took shows right away. A new `raise exception` in a migration needs a matching case there.
 
 ## Features
 1. **Start screen**: the app opens here, unless a table was open: a refresh or reopening the home-screen app returns to that table (`src/lib/screen.js`: `?table=<id>` in the URL + `poker-nights-screen` in localStorage). A game saved by the first version (v1: no `tableOpen` in the save) opens straight onto its table (`isLegacyGame`). The app reads the save **as stored** (`loadState({})`, never pre-merged with `initialState`) so `normalizeState` can tell a missing field from "false". It has two clearly separate sections:

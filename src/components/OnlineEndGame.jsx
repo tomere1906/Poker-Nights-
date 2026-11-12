@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { finalsFor, toChips } from '../lib/onlineTable.js';
 import EndGame from './EndGame.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const SAVE_DELAY = 600;
 
@@ -39,7 +40,7 @@ export default function OnlineEndGame({ view, actions, onBack, onSettle, onError
   function save(id) {
     const chips = pending.current[id];
     delete pending.current[id];
-    return actionsRef.current.setFinalChips(id, chips).catch((e) => onError(e.message));
+    return actionsRef.current.setFinalChips(id, chips).catch((e) => onError(friendlyError(e)));
   }
 
   async function flush() {
@@ -64,9 +65,9 @@ export default function OnlineEndGame({ view, actions, onBack, onSettle, onError
   return (
     <EndGame
       state={{ players: view.players, finals, endMode: view.endMode, cash: view.cash, settings: view.settings }}
-      onAddCash={(cash) => actions.addCash(cash).catch((e) => onError(e.message))}
-      onRemoveCash={(id) => actions.removeCash(id).catch((e) => onError(e.message))}
-      onMode={(mode) => actions.setEndMode(mode).catch((e) => onError(e.message))}
+      onAddCash={(cash) => actions.addCash(cash).catch((e) => onError(friendlyError(e)))}
+      onRemoveCash={(id) => actions.removeCash(id).catch((e) => onError(friendlyError(e)))}
+      onMode={(mode) => actions.setEndMode(mode).catch((e) => onError(friendlyError(e)))}
       onFinal={onFinal}
       onBack={onBack}
       onSettle={async () => {

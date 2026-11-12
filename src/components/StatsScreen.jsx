@@ -9,6 +9,7 @@ import BottomSheet from './BottomSheet.jsx';
 import NetChart from './NetChart.jsx';
 import ManagedGames from './ManagedGames.jsx';
 import ImportSheet from './ImportSheet.jsx';
+import { friendlyError } from '../lib/errors.js';
 
 const tone = (n) => (n > 0 ? 'text-emerald-300' : n < 0 ? 'text-rose-300' : 'text-slate-300');
 const signed = (n) => formatShekel(n, { signed: true });
@@ -366,7 +367,7 @@ export default function StatsScreen({
           setData(d);
           setError(null);
         })
-        .catch((e) => setError(e.message)),
+        .catch((e) => setError(friendlyError(e))),
     [loader]
   );
 
@@ -379,7 +380,7 @@ export default function StatsScreen({
       await fn();
       showToast(success);
     } catch (e) {
-      showToast(`הפעולה נכשלה: ${e.message}`);
+      showToast(friendlyError(e));
     }
     await reload();
   }
@@ -472,7 +473,7 @@ export default function StatsScreen({
               await reload();
               return true;
             } catch (e) {
-              showToast(`הייבוא נכשל: ${e.message}`);
+              showToast(`הייבוא נכשל: ${friendlyError(e)}`);
               return false;
             }
           }}
