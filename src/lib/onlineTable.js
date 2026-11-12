@@ -71,6 +71,37 @@ export async function listOpenTables() {
   );
 }
 
+// How long a closed game stays in the manager's "משחקים אחרונים" list (for
+// fixes via "פתח מחדש לתיקונים"). After that it only leaves the list: the
+// game itself and everyone's stats stay.
+export const RECENT_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Closed games of the last RECENT_DAYS days (RLS returns only my tables), with
+// the members so the list can keep only the ones I manage or co-manage.
+export async function listRecentGames(now = Date.now()) {
+  return must(
+    await supabase
+      .from('poker_tables')
+      .select(`${TABLE_COLUMNS}, table_members(user_id, is_co_manager)`)
+      .eq('status', 'ended')
+      .gte('ended_at', new Date(now - RECENT_DAYS * DAY_MS).toISOString())
+      .order('ended_at', { ascending: false })
+  );
+}
+
+// Pure: the closed games (settling finished) I managed or co-managed in the
+// last RECENT_DAYS days, newest first. Games still open for settling are
+// listed on their own on the start screen.
+export function recentManagedGames(tables, userId, now = Date.now()) {
+  const since = now - RECENT_DAYS * DAY_MS;
+  const manages = (t) =>
+    t.manager_id === userId || (t.table_members ?? []).some((m) => m.user_id === userId && m.is_co_manager);
+  return (tables ?? [])
+    .filter((t) => t.status === 'ended' && t.settled_at && t.ended_at && Date.parse(t.ended_at) >= since && manages(t))
+    .sort((a, b) => Date.parse(b.ended_at) - Date.parse(a.ended_at));
+}
+
 // Reads that may not exist yet while a migration hasn't been applied: an empty list then.
 function optional({ data, error }) {
   if (error && ['42P01', 'PGRST200', 'PGRST205'].includes(error.code)) return [];

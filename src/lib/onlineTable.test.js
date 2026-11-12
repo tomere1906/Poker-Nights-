@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 // toView is pure; keep the Supabase client out of the test.
 vi.mock('./supabase.js', () => ({ supabase: null, isSupabaseConfigured: false }));
-const { toView, finalsFor, toChips, cleanTableName } = await import('./onlineTable.js');
+const { toView, finalsFor, toChips, cleanTableName, recentManagedGames } = await import('./onlineTable.js');
 
 const M = 'manager-id';
 const P = 'player-id';
@@ -136,5 +136,32 @@ describe('toView: cash', () => {
   it('maps cash rows to the local shape', () => {
     const v = toView(raw({ cash: [{ id: 'c1', payer_id: 'p-guest', amount: 200 }] }), P);
     expect(v.cash).toEqual([{ id: 'c1', from: 'p-guest', amount: 200 }]);
+  });
+});
+
+describe('recentManagedGames', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z');
+  const daysAgo = (d) => new Date(now - d * 24 * 60 * 60 * 1000).toISOString();
+  const game = (id, over = {}) => ({
+    id, manager_id: M, status: 'ended', ended_at: daysAgo(1), settled_at: daysAgo(1), table_members: [], ...over,
+  });
+
+  it('lists closed games I managed in the last 30 days, newest first', () => {
+    const rows = [game('old', { ended_at: daysAgo(31) }), game('a', { ended_at: daysAgo(5) }), game('b', { ended_at: daysAgo(2) })];
+    expect(recentManagedGames(rows, M, now).map((t) => t.id)).toEqual(['b', 'a']);
+  });
+
+  it('includes co-managed games, never ones where I only played', () => {
+    const rows = [
+      game('co', { manager_id: 'x', table_members: [{ user_id: C, is_co_manager: true }] }),
+      game('played', { manager_id: 'x', table_members: [{ user_id: P, is_co_manager: false }] }),
+    ];
+    expect(recentManagedGames(rows, C, now).map((t) => t.id)).toEqual(['co']);
+    expect(recentManagedGames(rows, P, now)).toEqual([]);
+  });
+
+  it('skips games still being played or still open for settling (listed on their own)', () => {
+    const rows = [game('playing', { status: 'playing', ended_at: null, settled_at: null }), game('settling', { settled_at: null })];
+    expect(recentManagedGames(rows, M, now)).toEqual([]);
   });
 });
