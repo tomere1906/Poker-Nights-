@@ -3,7 +3,8 @@
 // v4: new logo/app icons (icons are cache-first, so a new name drops the old ones).
 // v5: other pages (privacy, terms) are cached under their own address, never as the app.
 // v6: the 2026-11 release (settling, Bit, imports…); the app now reloads itself when a new worker takes over.
-const CACHE = 'poker-nights-v6';
+// v7: the release after 2026-11-12 (the top spacing fix shipped without a bump).
+const CACHE = 'poker-nights-v7';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {
