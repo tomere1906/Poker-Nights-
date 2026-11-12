@@ -13,6 +13,7 @@
 --         T6 (450+): stored transfers, phone numbers for Bit (who may see them), "שולם ✓" marks
 --         T7 (516+): a player who leaves mid-game gives up their seat
 --         T8 (540+): a closed game stays open for settling until everyone has paid
+--         T9 (570+): cleaning "משחקים שניהלתי": hiding a game from your own list, deleting a closed game (original manager only)
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -548,8 +549,34 @@ begin
       (566, 'M reopens T8 for corrections',                          'M', $$update public.poker_tables set status = 'playing' where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:1'),
       (567, '…no settling, no transfers',                            'M', $$select (select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888' and (settled_at is not null or settled_manually)) + (select count(*) from public.settlement_transfers where table_id = '88888888-8888-4888-8888-888888888888')$$, 'count:0'),
 
+      -- ---------------- T9: cleaning "משחקים שניהלתי": hide from my list, or delete the game ----------------
+      -- T8 again: M manages it, Q is a co-manager, P played. Closed again, still open for settling.
+      (570, 'M closes T8 again (with transfers)',                    'M', $$select public.end_game('88888888-8888-4888-8888-888888888888', '{"88000000-0000-4000-8000-000000000001": 100, "88000000-0000-4000-8000-000000000002": -60, "88000000-0000-4000-8000-000000000003": -40}', '[{"from": "88000000-0000-4000-8000-000000000002", "to": "88000000-0000-4000-8000-000000000001", "amount": 60}, {"from": "88000000-0000-4000-8000-000000000003", "to": "88000000-0000-4000-8000-000000000001", "amount": 40}]')$$, 'ok'),
+      (571, 'M hides T8 from his list of managed games',             'M', $$insert into public.managed_list_hidden (table_id) values ('88888888-8888-4888-8888-888888888888')$$, 'ok'),
+      (572, '…M sees his row',                                       'M', $$select count(*) from public.managed_list_hidden where table_id = '88888888-8888-4888-8888-888888888888'$$, 'count:1'),
+      (573, 'The co-manager Q may hide it from his own list',        'Q', $$insert into public.managed_list_hidden (table_id) values ('88888888-8888-4888-8888-888888888888')$$, 'ok'),
+      (574, 'Q sees only his own row, not M''s',                     'Q', $$select count(*) from public.managed_list_hidden$$, 'count:1'),
+      (575, 'P only played: can''t add to that list',                'P', $$insert into public.managed_list_hidden (table_id) values ('88888888-8888-4888-8888-888888888888')$$, 'deny'),
+      (576, 'P sees nobody''s rows',                                 'P', $$select count(*) from public.managed_list_hidden$$, 'count:0'),
+      (577, 'A stranger can''t add to that list',                    'S', $$insert into public.managed_list_hidden (table_id) values ('88888888-8888-4888-8888-888888888888')$$, 'deny'),
+      (578, 'M can''t add a row for someone else',                   'M', $$insert into public.managed_list_hidden (user_id, table_id) values ('22222222-2222-4222-8222-222222222222', '88888888-8888-4888-8888-888888888888')$$, 'deny'),
+      (579, 'Rows are never updated',                                'M', $$update public.managed_list_hidden set hidden_at = now()$$, 'deny'),
+      (580, 'P can''t remove M''s row',                              'P', $$delete from public.managed_list_hidden$$, 'rows:0'),
+      (581, 'anon has no access',                                    'anon', $$select count(*) from public.managed_list_hidden$$, 'deny'),
+      (582, 'Hidden from the list only: still in P''s stats',        'P', $$select count(*) from public.my_games where table_id = '88888888-8888-4888-8888-888888888888'$$, 'count:1'),
+      (583, '…and in M''s stats',                                    'M', $$select count(*) from public.my_games where table_id = '88888888-8888-4888-8888-888888888888'$$, 'count:1'),
+      (584, 'Q shows it again in his own list',                      'Q', $$delete from public.managed_list_hidden where table_id = '88888888-8888-4888-8888-888888888888'$$, 'rows:1'),
+      (585, 'The co-manager can''t delete the closed game',          'Q', $$delete from public.poker_tables where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:0'),
+      (586, 'A player can''t delete it',                             'P', $$delete from public.poker_tables where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:0'),
+      (587, 'A stranger can''t delete it',                           'S', $$delete from public.poker_tables where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:0'),
+      (588, '…still there for P',                                    'P', $$select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888'$$, 'count:1'),
+      (589, 'The original manager deletes the closed game (settling open, transfers stored)', 'M', $$delete from public.poker_tables where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:1'),
+      (590, '…gone from P''s stats',                                 'P', $$select count(*) from public.my_games where table_id = '88888888-8888-4888-8888-888888888888'$$, 'count:0'),
+      (591, '…and from the co-manager Q''s stats',                'Q', $$select count(*) from public.my_games where table_id = '88888888-8888-4888-8888-888888888888'$$, 'count:0'),
+      (592, '…nothing of it is left anywhere',                       'postgres', $$select (select count(*) from public.table_players where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.settlement_transfers where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.table_log where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.table_members where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.managed_list_hidden where table_id = '88888888-8888-4888-8888-888888888888')$$, 'count:0'),
+
       -- ---------------- every table has RLS on ----------------
-      (90, 'RLS is enabled on all 10 tables',          'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments','settlement_transfers','profile_phones') and rowsecurity$$, 'count:10'),
+      (90, 'RLS is enabled on all 11 tables',          'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments','settlement_transfers','profile_phones','managed_list_hidden') and rowsecurity$$, 'count:11'),
       (91, 'Realtime publishes only table_log',        'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename <> 'table_log'$$, 'count:0'),
       (92, '…and table_log is published',              'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'table_log'$$, 'count:1')
     ) as t(i, name, who, sql, expect)

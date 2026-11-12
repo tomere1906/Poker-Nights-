@@ -376,7 +376,7 @@ export default function StatsScreen({
             onOptions={(game) => setOptions({ game, hidden: false })}
             onShowHidden={() => setShowHidden(true)}
           />
-          {userId && <ManagedGames userId={userId} onOpenTable={onOpenTable} />}
+          {userId && <ManagedGames userId={userId} onOpenTable={onOpenTable} onDeleted={reload} showToast={showToast} />}
         </>
       ) : (
         <>

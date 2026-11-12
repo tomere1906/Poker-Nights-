@@ -79,25 +79,43 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Closed games of the last RECENT_DAYS days (RLS returns only my tables), with
 // the members so the list can keep only the ones I manage or co-manage.
+// Also returns the ids I removed from that list ("הסר מהרשימה").
 export async function listRecentGames(now = Date.now()) {
-  return must(
-    await supabase
+  const [tables, hidden] = await Promise.all([
+    supabase
       .from('poker_tables')
       .select(`${TABLE_COLUMNS}, table_members(user_id, is_co_manager), settlement_transfers(paid_at)`)
       .eq('status', 'ended')
       .gte('ended_at', new Date(now - RECENT_DAYS * DAY_MS).toISOString())
-      .order('ended_at', { ascending: false })
-  );
+      .order('ended_at', { ascending: false }),
+    supabase.from('managed_list_hidden').select('table_id'),
+  ]);
+  return { tables: must(tables), hidden: optional(hidden).map((h) => h.table_id) };
+}
+
+// "הסר מהרשימה": only my own list; the game and everyone's stats stay.
+export async function hideFromManagedList(tableId) {
+  const { error } = await supabase.from('managed_list_hidden').insert({ table_id: tableId });
+  if (error && error.code !== '23505') throw error; // already hidden is fine
+}
+
+// "מחק משחק לגמרי": the original manager only (RLS); everything of the game
+// goes, including everyone's stats.
+export async function deleteGame(tableId) {
+  const rows = must(await supabase.from('poker_tables').delete().eq('id', tableId).select('id'));
+  if (!rows.length) throw new Error('רק המנהל שפתח את השולחן יכול למחוק אותו');
 }
 
 // Pure: the closed games (settled or still open for settling) I managed or
-// co-managed in the last RECENT_DAYS days, newest first.
-export function recentManagedGames(tables, userId, now = Date.now()) {
+// co-managed in the last RECENT_DAYS days, newest first, minus the ones I
+// removed from the list.
+export function recentManagedGames(tables, userId, now = Date.now(), hidden = []) {
   const since = now - RECENT_DAYS * DAY_MS;
   const manages = (t) =>
     t.manager_id === userId || (t.table_members ?? []).some((m) => m.user_id === userId && m.is_co_manager);
   return (tables ?? [])
     .filter((t) => t.status === 'ended' && t.ended_at && Date.parse(t.ended_at) >= since && manages(t))
+    .filter((t) => !hidden.includes(t.id))
     .sort((a, b) => Date.parse(b.ended_at) - Date.parse(a.ended_at));
 }
 

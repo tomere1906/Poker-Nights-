@@ -160,6 +160,11 @@ describe('recentManagedGames', () => {
     expect(recentManagedGames(rows, P, now)).toEqual([]);
   });
 
+  it('leaves out the games I removed from the list', () => {
+    const rows = [game('a'), game('b', { ended_at: daysAgo(3) })];
+    expect(recentManagedGames(rows, M, now, ['a']).map((t) => t.id)).toEqual(['b']);
+  });
+
   it('keeps games still open for settling, skips games still being played', () => {
     const rows = [game('playing', { status: 'playing', ended_at: null, settled_at: null }), game('settling', { settled_at: null })];
     expect(recentManagedGames(rows, M, now).map((t) => t.id)).toEqual(['settling']);
