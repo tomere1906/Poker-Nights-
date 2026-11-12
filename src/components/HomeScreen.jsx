@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { potTotal } from '../lib/game.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
-import { RECENT_DAYS, listOpenTables, listRecentGames, recentManagedGames } from '../lib/onlineTable.js';
+import { listOpenTables } from '../lib/onlineTable.js';
 import { CardsIcon, ChipIcon } from './Icons.jsx';
 import AccountBar from './AccountBar.jsx';
 
@@ -22,66 +22,17 @@ function Section({ icon, title, hint, children }) {
   );
 }
 
-// Closed games I managed or co-managed in the last 30 days, so a mistake can
-// still be fixed ("פתח מחדש לתיקונים" inside). Collapsed by default.
-function RecentGames({ games, onOpen }) {
-  const [open, setOpen] = useState(false);
-  if (!games.length) return null;
-  return (
-    <div className="rounded-2xl bg-slate-800/40 ring-1 ring-white/5">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between px-4 py-3 text-start text-sm font-bold text-slate-300"
-      >
-        <span>🛠️ משחקים אחרונים שניהלתי ({games.length})</span>
-        <span aria-hidden className={`transition ${open ? 'rotate-180' : ''}`}>▾</span>
-      </button>
-      {open && (
-        <div className="space-y-1.5 px-2 pb-2">
-          <p className="px-2 text-xs text-slate-500">
-            לתיקון טעויות אחרי סגירה · מוצגים {RECENT_DAYS} יום, והמשחק נשאר בסטטיסטיקה גם אחר כך
-          </p>
-          {games.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onOpen(t.id)}
-              className="flex w-full items-center justify-between gap-2 rounded-xl bg-slate-900/70 px-3 py-2.5 text-start transition active:scale-[0.98]"
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-bold text-slate-100">{t.name || 'שולחן בלי שם'}</span>
-                <span className="block text-xs text-slate-400">{formatDate(Date.parse(t.ended_at))}</span>
-              </span>
-              <span className="shrink-0 rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-bold text-emerald-300">
-                {t.settled_manually ? 'ההתחשבנות נסגרה 🔒' : 'כולם שילמו ✓'}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function OnlineSection({ auth, onContinueOnline, onNewOnline, onOpenStats }) {
   const [tables, setTables] = useState(null);
-  const [recent, setRecent] = useState([]);
   const [error, setError] = useState(null);
   const signedIn = Boolean(auth.session);
-  const userId = auth.session?.user?.id;
 
   useEffect(() => {
     if (!signedIn) return;
     listOpenTables()
       .then(setTables)
       .catch((e) => setError(e.message));
-    // Not essential: if it fails the start screen just doesn't show it.
-    listRecentGames()
-      .then((rows) => setRecent(recentManagedGames(rows, userId)))
-      .catch(() => setRecent([]));
-  }, [signedIn, userId]);
+  }, [signedIn]);
 
   // A game being played, and games that ended but are still open for settling.
   const latest = tables?.find((t) => t.status !== 'ended');
@@ -132,7 +83,6 @@ function OnlineSection({ auth, onContinueOnline, onNewOnline, onOpenStats }) {
           <button type="button" onClick={onOpenStats} className={SECONDARY}>
             📊 סטטיסטיקה והחבר׳ה שלי
           </button>
-          <RecentGames games={recent} onOpen={onContinueOnline} />
         </>
       )}
     </Section>

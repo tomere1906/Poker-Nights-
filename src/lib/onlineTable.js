@@ -71,7 +71,7 @@ export async function listOpenTables() {
   );
 }
 
-// How long a closed game stays in the manager's "משחקים אחרונים" list (for
+// How long a closed game stays in the manager's "משחקים שניהלתי" list (for
 // fixes via "פתח מחדש לתיקונים"). After that it only leaves the list: the
 // game itself and everyone's stats stay.
 export const RECENT_DAYS = 30;
@@ -83,22 +83,21 @@ export async function listRecentGames(now = Date.now()) {
   return must(
     await supabase
       .from('poker_tables')
-      .select(`${TABLE_COLUMNS}, table_members(user_id, is_co_manager)`)
+      .select(`${TABLE_COLUMNS}, table_members(user_id, is_co_manager), settlement_transfers(paid_at)`)
       .eq('status', 'ended')
       .gte('ended_at', new Date(now - RECENT_DAYS * DAY_MS).toISOString())
       .order('ended_at', { ascending: false })
   );
 }
 
-// Pure: the closed games (settling finished) I managed or co-managed in the
-// last RECENT_DAYS days, newest first. Games still open for settling are
-// listed on their own on the start screen.
+// Pure: the closed games (settled or still open for settling) I managed or
+// co-managed in the last RECENT_DAYS days, newest first.
 export function recentManagedGames(tables, userId, now = Date.now()) {
   const since = now - RECENT_DAYS * DAY_MS;
   const manages = (t) =>
     t.manager_id === userId || (t.table_members ?? []).some((m) => m.user_id === userId && m.is_co_manager);
   return (tables ?? [])
-    .filter((t) => t.status === 'ended' && t.settled_at && t.ended_at && Date.parse(t.ended_at) >= since && manages(t))
+    .filter((t) => t.status === 'ended' && t.ended_at && Date.parse(t.ended_at) >= since && manages(t))
     .sort((a, b) => Date.parse(b.ended_at) - Date.parse(a.ended_at));
 }
 

@@ -7,6 +7,7 @@ import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
 import BottomSheet from './BottomSheet.jsx';
 import NetChart from './NetChart.jsx';
+import ManagedGames from './ManagedGames.jsx';
 
 const tone = (n) => (n > 0 ? 'text-emerald-300' : n < 0 ? 'text-rose-300' : 'text-slate-300');
 const signed = (n) => formatShekel(n, { signed: true });
@@ -279,6 +280,7 @@ const TABS = [
 
 // Stats from closed online games the viewer played in. Only the viewer sees them.
 export default function StatsScreen({
+  userId,
   onBack,
   onOpenTable,
   showToast = () => {},
@@ -366,13 +368,16 @@ export default function StatsScreen({
           onOptions={(game) => setOptions({ game, hidden: true })}
         />
       ) : tab === 'mine' ? (
-        <Mine
-          games={data.games}
-          hiddenCount={data.hidden.length}
-          onOpenTable={onOpenTable}
-          onOptions={(game) => setOptions({ game, hidden: false })}
-          onShowHidden={() => setShowHidden(true)}
-        />
+        <>
+          <Mine
+            games={data.games}
+            hiddenCount={data.hidden.length}
+            onOpenTable={onOpenTable}
+            onOptions={(game) => setOptions({ game, hidden: false })}
+            onShowHidden={() => setShowHidden(true)}
+          />
+          {userId && <ManagedGames userId={userId} onOpenTable={onOpenTable} />}
+        </>
       ) : (
         <>
           <Mates mates={data.mates} />

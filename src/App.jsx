@@ -121,7 +121,7 @@ export default function App() {
       )}
 
       {!needsName && !invite && screen === 'stats' && auth.session && (
-        <StatsScreen onBack={goHome} onOpenTable={openOnline} showToast={showToast} />
+        <StatsScreen userId={auth.session.user.id} onBack={goHome} onOpenTable={openOnline} showToast={showToast} />
       )}
 
       {!needsName && !invite && screen === 'profile' && auth.profile && (

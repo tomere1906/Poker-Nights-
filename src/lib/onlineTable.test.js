@@ -160,8 +160,8 @@ describe('recentManagedGames', () => {
     expect(recentManagedGames(rows, P, now)).toEqual([]);
   });
 
-  it('skips games still being played or still open for settling (listed on their own)', () => {
+  it('keeps games still open for settling, skips games still being played', () => {
     const rows = [game('playing', { status: 'playing', ended_at: null, settled_at: null }), game('settling', { settled_at: null })];
-    expect(recentManagedGames(rows, M, now)).toEqual([]);
+    expect(recentManagedGames(rows, M, now).map((t) => t.id)).toEqual(['settling']);
   });
 });
