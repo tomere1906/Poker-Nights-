@@ -120,6 +120,18 @@ describe('online results and exits', () => {
   });
 });
 
+describe('toView: settling', () => {
+  it('an ended game with no settled_at is still open for settling', () => {
+    const ended = { ...raw().table, status: 'ended', ended_at: '2026-11-12T20:00:00Z' };
+    expect(toView(raw({ table: { ...ended, settled_at: null } }), M).settling).toBe(true);
+    expect(toView(raw({ table: { ...ended, settled_at: '2026-11-12T21:00:00Z', settled_manually: true } }), M)).toMatchObject({
+      settling: false,
+      settledManually: true,
+    });
+    expect(toView(raw({ table: { ...raw().table, status: 'playing' } }), M).settling).toBe(false);
+  });
+});
+
 describe('toView: cash', () => {
   it('maps cash rows to the local shape', () => {
     const v = toView(raw({ cash: [{ id: 'c1', payer_id: 'p-guest', amount: 200 }] }), P);

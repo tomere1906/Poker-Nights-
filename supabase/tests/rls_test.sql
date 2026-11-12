@@ -12,6 +12,7 @@
 --         300+: stats views (my_games, my_tablemates) over all of the above; 330+: hiding games (hidden_games); 350+: removing from your own stats for good; 370+: rounding; 380+: cash paid into the pot; 410+: chip value and "לא כאן"; 430+: hidden characters in names
 --         T6 (450+): stored transfers, phone numbers for Bit (who may see them), "שולם ✓" marks
 --         T7 (516+): a player who leaves mid-game gives up their seat
+--         T8 (540+): a closed game stays open for settling until everyone has paid
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -515,6 +516,37 @@ begin
       (531, 'M brings P back in the free seat 4',                    'M', $$update public.table_players set out_kind = null, out_chips = null, seat = 4 where id = '77000000-0000-4000-8000-000000000002'$$, 'rows:1'),
       (532, '…logged as back in the game',                           'C', $$select count(*) from public.table_log where table_id = '77777777-7777-4777-8777-777777777777' and action = 'player_back' and details ->> 'player_id' = '77000000-0000-4000-8000-000000000002'$$, 'count:1'),
       (533, 'A member can''t seat himself with no seat',             'S', $$insert into public.table_players (table_id, user_id, seat) values ('77777777-7777-4777-8777-777777777777', '33333333-3333-4333-8333-333333333333', null)$$, 'deny'),
+
+      -- ---------------- T8: a closed game stays open for settling until everyone paid ----------------
+      -- M manages T8: M +100, P −60, Q −40. Transfers: P → M 60, Q → M 40. M's phone was saved in T6.
+      (540, 'M opens T8',                                            'M', $$insert into public.poker_tables (id, invite_code) values ('88888888-8888-4888-8888-888888888888', 'code-t8')$$, 'ok'),
+      (541, 'P joins T8',                                            'P', $$insert into public.table_members (table_id, invite_code) values ('88888888-8888-4888-8888-888888888888', 'code-t8')$$, 'ok'),
+      (542, 'Q joins T8',                                            'Q', $$insert into public.table_members (table_id, invite_code) values ('88888888-8888-4888-8888-888888888888', 'code-t8')$$, 'ok'),
+      (543, 'M seats M, P, Q',                                       'M', $$insert into public.table_players (id, table_id, user_id, seat) values ('88000000-0000-4000-8000-000000000001', '88888888-8888-4888-8888-888888888888', '11111111-1111-4111-8111-111111111111', 0), ('88000000-0000-4000-8000-000000000002', '88888888-8888-4888-8888-888888888888', '22222222-2222-4222-8222-222222222222', 1), ('88000000-0000-4000-8000-000000000003', '88888888-8888-4888-8888-888888888888', '44444444-4444-4444-8444-444444444444', 2)$$, 'ok'),
+      (544, 'M closes T8 with two transfers',                        'M', $$select public.end_game('88888888-8888-4888-8888-888888888888', '{"88000000-0000-4000-8000-000000000001": 100, "88000000-0000-4000-8000-000000000002": -60, "88000000-0000-4000-8000-000000000003": -40}', '[{"from": "88000000-0000-4000-8000-000000000002", "to": "88000000-0000-4000-8000-000000000001", "amount": 60}, {"from": "88000000-0000-4000-8000-000000000003", "to": "88000000-0000-4000-8000-000000000001", "amount": 40}]')$$, 'ok'),
+      (545, 'The game ended, the settling is still open',            'P', $$select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888' and status = 'ended' and settled_at is null$$, 'count:1'),
+      (546, '…and it counts in P''s stats right away',               'P', $$select count(*) from public.my_games where table_id = '88888888-8888-4888-8888-888888888888' and final_net = -60$$, 'count:1'),
+      (547, 'M makes Q a co-manager of T8',                          'M', $$update public.table_members set is_co_manager = true where table_id = '88888888-8888-4888-8888-888888888888' and user_id = '44444444-4444-4444-8444-444444444444'$$, 'rows:1'),
+      (548, 'A co-manager can''t close the settling by hand',        'Q', $$update public.poker_tables set settled_at = now(), settled_manually = true where id = '88888888-8888-4888-8888-888888888888'$$, 'deny'),
+      (549, 'A player can''t close it either',                       'P', $$update public.poker_tables set settled_at = now() where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:0'),
+      (550, 'P owes M and hasn''t paid: P sees M''s phone',          'P', $$select count(*) from public.profile_phones where user_id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
+      (551, 'P marks P → M paid',                                    'P', $$update public.settlement_transfers set paid_at = now() where table_id = '88888888-8888-4888-8888-888888888888' and from_player = '88000000-0000-4000-8000-000000000002'$$, 'rows:1'),
+      (552, '…paid: P no longer sees M''s phone',                    'P', $$select count(*) from public.profile_phones where user_id = '11111111-1111-4111-8111-111111111111'$$, 'count:0'),
+      (553, '1 of 2 paid: the settling is still open',               'M', $$select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888' and settled_at is null$$, 'count:1'),
+      (554, 'Q marks Q → M paid (the last one)',                     'Q', $$update public.settlement_transfers set paid_at = now() where table_id = '88888888-8888-4888-8888-888888888888' and from_player = '88000000-0000-4000-8000-000000000003'$$, 'rows:1'),
+      (555, '…everyone paid: the table closed by itself',            'M', $$select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888' and settled_at is not null and not settled_manually$$, 'count:1'),
+      (556, 'Log: the settling closed (not by hand)',                'P', $$select count(*) from public.table_log where table_id = '88888888-8888-4888-8888-888888888888' and action = 'game_settled' and details ->> 'manual' = 'false'$$, 'count:1'),
+      (557, 'M undoes Q → M',                                        'M', $$update public.settlement_transfers set paid_at = null where table_id = '88888888-8888-4888-8888-888888888888' and from_player = '88000000-0000-4000-8000-000000000003'$$, 'rows:1'),
+      (558, '…the settling opens again (it closed by itself)',       'Q', $$select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888' and settled_at is null$$, 'count:1'),
+      (559, 'M closes the settling by hand',                         'M', $$update public.poker_tables set settled_at = now(), settled_manually = true where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:1'),
+      (560, 'P undoes his mark',                                     'P', $$update public.settlement_transfers set paid_at = null where table_id = '88888888-8888-4888-8888-888888888888' and from_player = '88000000-0000-4000-8000-000000000002'$$, 'rows:1'),
+      (561, '…a manual close stays closed',                          'M', $$select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888' and settled_at is not null and settled_manually$$, 'count:1'),
+      (562, '…and the phone stays hidden once the settling is closed', 'P', $$select count(*) from public.profile_phones where user_id = '11111111-1111-4111-8111-111111111111'$$, 'count:0'),
+      (563, 'Log: closed by hand, by M',                             'P', $$select count(*) from public.table_log where table_id = '88888888-8888-4888-8888-888888888888' and action = 'game_settled' and details ->> 'manual' = 'true' and actor_id = '11111111-1111-4111-8111-111111111111'$$, 'count:1'),
+      (564, 'Only an ended game can be settled (T7 is on)',          'M', $$update public.poker_tables set settled_at = now() where id = '77777777-7777-4777-8777-777777777777'$$, 'error:23514'),
+      (565, 'A game closed with no transfers is settled right away (T6)', 'M', $$select count(*) from public.poker_tables where id = '76767676-7676-4676-8676-767676767676' and status = 'ended' and settled_at is not null$$, 'count:1'),
+      (566, 'M reopens T8 for corrections',                          'M', $$update public.poker_tables set status = 'playing' where id = '88888888-8888-4888-8888-888888888888'$$, 'rows:1'),
+      (567, '…no settling, no transfers',                            'M', $$select (select count(*) from public.poker_tables where id = '88888888-8888-4888-8888-888888888888' and (settled_at is not null or settled_manually)) + (select count(*) from public.settlement_transfers where table_id = '88888888-8888-4888-8888-888888888888')$$, 'count:0'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 10 tables',          'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments','settlement_transfers','profile_phones') and rowsecurity$$, 'count:10'),

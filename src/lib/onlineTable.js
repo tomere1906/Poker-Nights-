@@ -8,7 +8,7 @@ import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
 
 const TABLE_COLUMNS =
-  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, chip_value, buy_in_mode, end_mode, invite_code, created_at, ended_at';
+  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, chip_value, buy_in_mode, end_mode, invite_code, created_at, ended_at, settled_at, settled_manually';
 
 // Same limit as the database check (poker_tables_name_length).
 export const MAX_TABLE_NAME = 30;
@@ -59,13 +59,14 @@ export async function joinTable(tableId, code) {
   if (error && error.code !== '23505') throw error;
 }
 
-// Tables I manage or joined that haven't ended (RLS returns only those).
+// Tables I manage or joined (RLS returns only those) that are still being
+// played, or ended but still open for settling ("פתוח להתחשבנות").
 export async function listOpenTables() {
   return must(
     await supabase
       .from('poker_tables')
-      .select(`${TABLE_COLUMNS}, table_players(count)`)
-      .neq('status', 'ended')
+      .select(`${TABLE_COLUMNS}, table_players(count), settlement_transfers(paid_at)`)
+      .or('status.neq.ended,settled_at.is.null')
       .order('created_at', { ascending: false })
   );
 }
@@ -197,6 +198,9 @@ export function toView(raw, userId) {
     status: table.status,
     ended,
     endedAt: table.ended_at ? Date.parse(table.ended_at) : null,
+    // The game ended but transfers are still being paid ("פתוח להתחשבנות").
+    settling: ended && !table.settled_at,
+    settledManually: Boolean(table.settled_manually),
     started: table.status !== 'seating',
     endMode,
     finals: finalsFor(players, endMode),
@@ -437,6 +441,16 @@ function makeActions(view) {
           .from('settlement_transfers')
           .update({ paid_at: paid ? new Date().toISOString() : null })
           .eq('id', transferId)
+      );
+    },
+
+    // The manager closes the settling by hand (it also closes by itself when everyone paid).
+    async closeSettling() {
+      must(
+        await supabase
+          .from('poker_tables')
+          .update({ settled_at: new Date().toISOString(), settled_manually: true })
+          .eq('id', tableId)
       );
     },
 

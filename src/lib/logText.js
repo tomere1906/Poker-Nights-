@@ -62,6 +62,10 @@ export function describeLog(entry) {
       return `${who} הסיר את ${name} מהמנהלים`;
     case 'game_started':
       return `${who} התחיל את המשחק`;
+    case 'game_settled':
+      return d.manual ? `${who} סגר את ההתחשבנות` : 'כולם שילמו ✓ ההתחשבנות נסגרה';
+    case 'settling_reopened':
+      return `${who} ביטל סימון תשלום – ההתחשבנות נפתחה שוב`;
     case 'game_ended':
       return `${who} סיים את המשחק`;
     case 'game_reset':

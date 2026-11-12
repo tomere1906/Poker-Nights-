@@ -48,6 +48,12 @@ describe('describeLog: exits and table names', () => {
     expect(say('chip_value_changed', { old: 1, new: 0.5 }, 'תומר')).toContain('0.5');
   });
 
+  it('describes the settling closing by itself, by hand, and opening again', () => {
+    expect(say('game_settled', { manual: false }, 'עידו')).toBe('כולם שילמו ✓ ההתחשבנות נסגרה');
+    expect(say('game_settled', { manual: true }, 'אסף')).toBe('אסף סגר את ההתחשבנות');
+    expect(say('settling_reopened', { manual: false }, 'אסף')).toContain('נפתחה שוב');
+  });
+
   it('describes "שולם ✓" marks, without any phone number', () => {
     expect(say('transfer_paid', { name: 'עידו', to: 'תומר', amount: 150 }, 'עידו')).toBe('עידו סימן ששולם: עידו ← תומר 150 ₪ ✓');
     expect(say('transfer_unpaid', { name: 'עידו', to: 'תומר', amount: 150 }, 'אסף')).toBe(
