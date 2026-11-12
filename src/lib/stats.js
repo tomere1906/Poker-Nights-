@@ -3,7 +3,7 @@
 // games the viewer played in. Amounts are whole shekels.
 
 // game: { tableId, tableName, endedAt (ms), net, buyInTotal, buyInCount, playerCount, imported? }
-// Imported nights (from a file) count everywhere except the buy-in facts: they have no buy-ins.
+// Imported nights (from a file) count everywhere, except in stats that need buy-ins.
 export function personalStats(games) {
   const sorted = [...games].sort((a, b) => a.endedAt - b.endedAt);
   const count = sorted.length;
@@ -25,9 +25,12 @@ export function personalStats(games) {
     series.push({ ...g, cumulative });
   }
 
-  const online = sorted.filter((g) => !g.imported);
-  const buyInCount = online.reduce((sum, g) => sum + g.buyInCount, 0);
-  const buyInTotal = online.reduce((sum, g) => sum + g.buyInTotal, 0);
+  // Stats that need buy-ins come only from the games that have them (imported
+  // nights don't); null when no game has them, so the screen leaves them out.
+  const withBuyIns = sorted.filter((g) => !g.imported && g.buyInCount > 0);
+  const buyInCount = withBuyIns.reduce((sum, g) => sum + g.buyInCount, 0);
+  const buyInTotal = withBuyIns.reduce((sum, g) => sum + g.buyInTotal, 0);
+  const n = withBuyIns.length;
 
   return {
     count,
@@ -36,13 +39,15 @@ export function personalStats(games) {
     best,
     worst,
     wins: sorted.filter((g) => g.net > 0).length,
+    losses: sorted.filter((g) => g.net < 0).length,
+    evens: sorted.filter((g) => g.net === 0).length,
+    // How many games the buy-in stats below come from.
+    withBuyIns: n,
     // "הפסיד הכל": left with no chips at all.
-    lostAll: sorted.filter((g) => g.buyInTotal > 0 && g.net + g.buyInTotal === 0).length,
+    lostAll: n ? withBuyIns.filter((g) => g.net + g.buyInTotal === 0).length : null,
     // Buy-ins per night (count, one decimal) and their average amount (whole shekels).
-    avgBuyIns: online.length ? Math.round((buyInCount / online.length) * 10) / 10 : 0,
-    avgBuyInAmount: online.length ? Math.round(buyInTotal / online.length) : 0,
-    onlineCount: online.length,
-    importedCount: count - online.length,
+    avgBuyIns: n ? Math.round((buyInCount / n) * 10) / 10 : null,
+    avgBuyInAmount: n ? Math.round(buyInTotal / n) : null,
     currentStreak: run,
     bestStreak,
     series,

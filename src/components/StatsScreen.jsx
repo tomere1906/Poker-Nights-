@@ -148,6 +148,12 @@ function Hidden({ hidden, onUnhide, onOptions, onBack }) {
   );
 }
 
+// A stat calculated from only some of the games (the ones that have that data).
+function FromGames({ n, count }) {
+  if (n >= count) return null;
+  return <span className="text-slate-500"> · מתוך {n === 1 ? 'ערב אחד' : `${n} ערבים`} עם נתוני כניסות</span>;
+}
+
 // "📥 ייבוא היסטוריה" and, once there are imported nights, "מחק את כל המיובאים" (two taps).
 function ImportActions({ importedCount, onImport, onDeleteImported }) {
   const [confirm, setConfirm] = useState(false);
@@ -207,24 +213,39 @@ function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden, import
       <NetChart series={s.series} />
 
       <section className="rounded-3xl bg-slate-800/70 p-4 ring-1 ring-white/5">
-        <h3 className="mb-2 font-bold">עובדות משעשעות 🎲</h3>
+        <h3 className="mb-2 font-bold">נתונים נוספים</h3>
         <ul className="space-y-1.5 text-sm text-slate-300">
           <li>
-            💀 הפסדת הכל <b className="text-slate-100">{s.lostAll === 1 ? 'פעם אחת' : `${s.lostAll} פעמים`}</b>
+            ✅ ברווח <b className="text-slate-100">{s.wins}</b> · ❌ בהפסד <b className="text-slate-100">{s.losses}</b>
+            {s.evens > 0 && (
+              <>
+                {' '}· 🤝 מאוזן <b className="text-slate-100">{s.evens}</b>
+              </>
+            )}{' '}
+            <span className="text-slate-500">מתוך {s.count} ערבים</span>
           </li>
-          {s.onlineCount > 0 && (
+          {s.currentStreak > 0 && (
             <li>
-              💵 בממוצע <b className="text-slate-100">{s.avgBuyIns}</b> כניסות לערב (≈ {formatShekel(s.avgBuyInAmount)})
-              {s.importedCount > 0 && <span className="text-slate-500"> · מהמשחקים באפליקציה</span>}
+              🔥 רצף רווחים נוכחי: <b className="text-slate-100">{s.currentStreak === 1 ? 'ערב אחד' : `${s.currentStreak} ערבים`}</b>
             </li>
           )}
-          <li>
-            🔥 רצף רווחים נוכחי: <b className="text-slate-100">{s.currentStreak}</b> · השיא שלך:{' '}
-            <b className="text-slate-100">{s.bestStreak}</b>
-          </li>
-          <li>
-            ✅ ערבים ברווח: <b className="text-slate-100">{s.wins}</b> מתוך {s.count}
-          </li>
+          {s.bestStreak > 1 && (
+            <li>
+              🏅 רצף הרווחים הארוך שלך: <b className="text-slate-100">{s.bestStreak} ערבים</b>
+            </li>
+          )}
+          {s.avgBuyIns != null && (
+            <li>
+              💵 בממוצע <b className="text-slate-100">{s.avgBuyIns}</b> כניסות לערב (≈ {formatShekel(s.avgBuyInAmount)})
+              <FromGames n={s.withBuyIns} count={s.count} />
+            </li>
+          )}
+          {s.lostAll > 0 && (
+            <li>
+              💀 הפסדת הכל <b className="text-slate-100">{s.lostAll === 1 ? 'פעם אחת' : `${s.lostAll} פעמים`}</b>
+              <FromGames n={s.withBuyIns} count={s.count} />
+            </li>
+          )}
         </ul>
       </section>
 
