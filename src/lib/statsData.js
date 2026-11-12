@@ -2,6 +2,7 @@
 // contain only closed games the viewer played in, and only the viewer's data.
 import { supabase } from './supabase.js';
 import { dayToMs } from './importFile.js';
+import { uuid } from './uuid.js';
 
 function must({ data, error }) {
   if (error) throw error;
@@ -86,7 +87,7 @@ export async function loadStats() {
 // Saves one file's games ({ playedOn, net, note }) under one import id. Only
 // the viewer sees them (RLS); the database stamps the owner and the time.
 export async function importGames(games) {
-  const importId = crypto.randomUUID();
+  const importId = uuid();
   const rows = games.map((g) => ({ import_id: importId, played_on: g.playedOn, net: g.net, note: g.note }));
   for (let i = 0; i < rows.length; i += 500) {
     must(await supabase.from('imported_games').insert(rows.slice(i, i + 500)));
