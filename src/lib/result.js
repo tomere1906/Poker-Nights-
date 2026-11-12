@@ -3,11 +3,13 @@
 import { DEFAULT_CHIP_VALUE, chipsToShekels, shekelsToChips } from './game.js';
 import { formatCount } from './format.js';
 
+// In this order; profit/loss is the default everywhere a result is entered.
 export const RESULT_UNITS = [
+  { id: 'net', label: 'רווח/הפסד' },
   { id: 'chips', label: 'צ׳יפים' },
   { id: 'shekels', label: 'כסף' },
-  { id: 'net', label: 'פלוס/מינוס' },
 ];
+export const DEFAULT_RESULT_UNIT = 'net';
 
 // What the player leaves with (₪) from what was typed, or null if not complete.
 // net: totalIn ± amount; a net amount other than 0 needs its sign (+1 / −1) first.

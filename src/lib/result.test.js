@@ -44,3 +44,11 @@ describe('a result told three ways (chips / ₪ / profit-loss)', () => {
     expect(netText(0)).toBe('מאוזן');
   });
 });
+
+describe('the three input styles', () => {
+  it('come in the order רווח/הפסד, צ׳יפים, כסף, with רווח/הפסד as the default', async () => {
+    const { RESULT_UNITS, DEFAULT_RESULT_UNIT } = await import('./result.js');
+    expect(RESULT_UNITS.map((u) => u.label)).toEqual(['רווח/הפסד', 'צ׳יפים', 'כסף']);
+    expect(DEFAULT_RESULT_UNIT).toBe('net');
+  });
+});

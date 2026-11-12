@@ -8,6 +8,7 @@ import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
 import CashForm from './CashForm.jsx';
 import ResultField from './ResultField.jsx';
+import { DEFAULT_RESULT_UNIT } from '../lib/result.js';
 
 function buyInCountLabel(count) {
   if (count === 0) return 'אין קניות';
@@ -82,7 +83,7 @@ function ExitPicker({ player, chipValue, current = null, onPick, onCancel }) {
   const box = useRef(null);
   const [typing, setTyping] = useState(current?.kind === 'amount');
   // Told as chips, ₪ in hand, or profit/loss (ResultField); kept as the ₪ they leave with.
-  const [unit, setUnit] = useState(chipValue !== DEFAULT_CHIP_VALUE ? 'chips' : 'shekels');
+  const [unit, setUnit] = useState(DEFAULT_RESULT_UNIT);
   const [shekels, setShekels] = useState(current?.kind === 'amount' ? current.chips : null);
 
   // Opened from the bottom of the sheet: bring all three options into view.

@@ -5,6 +5,7 @@ import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
 import CashForm from './CashForm.jsx';
 import ResultField from './ResultField.jsx';
+import { DEFAULT_RESULT_UNIT } from '../lib/result.js';
 import { cashRoom } from '../lib/settlement.js';
 
 // "מזומן ששולם": cash already paid (when leaving, or at the end). Only the rest
@@ -100,9 +101,9 @@ export default function EndGame({ state, onFinal, onBack, onSettle, onAddCash, o
   const { players, finals, endMode } = state;
   const cash = state.cash ?? [];
   const chipValue = state.settings?.chipValue ?? DEFAULT_CHIP_VALUE;
-  // Per player, how the result is told; the default follows the table.
+  // Per player, how the result is told (default: profit/loss).
   const [units, setUnits] = useState({});
-  const unitOf = (id) => units[id] ?? (endMode === 'net' ? 'net' : chipValue === DEFAULT_CHIP_VALUE ? 'shekels' : 'chips');
+  const unitOf = (id) => units[id] ?? DEFAULT_RESULT_UNIT;
 
   // Seat order; players who left mid-game (no seat) last.
   const ordered = [...players].sort((a, b) => (a.seat ?? 99) - (b.seat ?? 99));
@@ -144,7 +145,7 @@ export default function EndGame({ state, onFinal, onBack, onSettle, onAddCash, o
       </div>
 
       <p className="mb-3 text-sm text-slate-400">
-        מה כל אחד אומר? בכל שורה בוחרים איך הוא מספר: צ׳יפים, כסף או פלוס/מינוס
+        מה כל אחד אומר? בכל שורה בוחרים איך הוא מספר: רווח/הפסד, צ׳יפים או כסף
         {chipValue !== DEFAULT_CHIP_VALUE && ` (צ׳יפ שווה ${formatChipValue(chipValue)})`}
       </p>
 

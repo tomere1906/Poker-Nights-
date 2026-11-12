@@ -3,7 +3,7 @@ import { DEFAULT_CHIP_VALUE, shekelsToChips } from '../lib/game.js';
 import { formatCount, formatShekel, parseAmount } from '../lib/format.js';
 import { RESULT_UNITS, netText, resultShekels, resultShown as shown } from '../lib/result.js';
 
-// One field for a player's result, with a small "צ׳יפים / כסף / פלוס/מינוס" selector
+// One field for a player's result, with a small "רווח/הפסד / צ׳יפים / כסף" selector
 // above it and the other forms under it. shekels: what they leave with (₪ or null);
 // onChange(₪ | null). unit / onUnit: the chosen input style (kept by the parent).
 // Converting uses the chip value and the player's total buy-ins.
