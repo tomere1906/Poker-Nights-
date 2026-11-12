@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { hideGame, loadStats, removeGameForGood, unhideGame } from '../lib/statsData.js';
+import { deleteAllImported, hideGame, importGames, loadStats, removeGameForGood, unhideGame } from '../lib/statsData.js';
 import { MATE_SORTS, personalStats, sortMates, withAverages } from '../lib/stats.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { suggestedColor } from '../lib/colors.js';
@@ -8,6 +8,7 @@ import PlayerName from './PlayerName.jsx';
 import BottomSheet from './BottomSheet.jsx';
 import NetChart from './NetChart.jsx';
 import ManagedGames from './ManagedGames.jsx';
+import ImportSheet from './ImportSheet.jsx';
 
 const tone = (n) => (n > 0 ? 'text-emerald-300' : n < 0 ? 'text-rose-300' : 'text-slate-300');
 const signed = (n) => formatShekel(n, { signed: true });
@@ -139,14 +140,36 @@ function Hidden({ hidden, onUnhide, onOptions, onBack }) {
               </button>
               <OptionsButton onClick={() => onOptions(g)} />
             </li>
-          ))}
+            )
+          )}
         </ul>
       )}
     </div>
   );
 }
 
-function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden }) {
+// "📥 ייבוא היסטוריה" and, once there are imported nights, "מחק את כל המיובאים" (two taps).
+function ImportActions({ importedCount, onImport, onDeleteImported }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={onImport} className="w-full rounded-2xl bg-slate-800 py-3 font-bold text-slate-200 transition active:scale-[0.98]">
+        📥 ייבוא היסטוריה מקובץ
+      </button>
+      {importedCount > 0 && (
+        <button
+          type="button"
+          onClick={() => (confirm ? onDeleteImported() : setConfirm(true))}
+          className={`w-full rounded-2xl py-3 text-sm font-bold transition active:scale-[0.98] ${confirm ? 'bg-rose-500 text-white' : 'bg-slate-800/60 text-rose-300'}`}
+        >
+          {confirm ? `בטוח? ${importedCount} המשחקים המיובאים יימחקו – הקש שוב` : `🗑️ מחק את כל המיובאים (${importedCount})`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden, importActions }) {
   const s = useMemo(() => personalStats(games), [games]);
   if (s.count === 0) {
     return (
@@ -154,8 +177,9 @@ function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden }) {
         <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-slate-400">
           {hiddenCount > 0 ? 'כל המשחקים שלך מוסתרים.' : 'עוד אין משחקים סגורים.'}
           <br />
-          {hiddenCount > 0 ? 'אפשר להחזיר אותם למטה' : 'הסטטיסטיקה תופיע אחרי שמנהל השולחן יסגור שולחן 🔒'}
+          {hiddenCount > 0 ? 'אפשר להחזיר אותם למטה' : 'הסטטיסטיקה תופיע אחרי שמנהל השולחן יסגור שולחן 🔒, או אחרי ייבוא היסטוריה מקובץ'}
         </p>
+        {importActions}
         <HiddenLink count={hiddenCount} onShowHidden={onShowHidden} />
       </div>
     );
@@ -188,9 +212,12 @@ function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden }) {
           <li>
             💀 הפסדת הכל <b className="text-slate-100">{s.lostAll === 1 ? 'פעם אחת' : `${s.lostAll} פעמים`}</b>
           </li>
-          <li>
-            💵 בממוצע <b className="text-slate-100">{s.avgBuyIns}</b> כניסות לערב (≈ {formatShekel(s.avgBuyInAmount)})
-          </li>
+          {s.onlineCount > 0 && (
+            <li>
+              💵 בממוצע <b className="text-slate-100">{s.avgBuyIns}</b> כניסות לערב (≈ {formatShekel(s.avgBuyInAmount)})
+              {s.importedCount > 0 && <span className="text-slate-500"> · מהמשחקים באפליקציה</span>}
+            </li>
+          )}
           <li>
             🔥 רצף רווחים נוכחי: <b className="text-slate-100">{s.currentStreak}</b> · השיא שלך:{' '}
             <b className="text-slate-100">{s.bestStreak}</b>
@@ -204,7 +231,18 @@ function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden }) {
       <section>
         <h3 className="mb-2 text-sm font-medium text-slate-400">המשחקים שלי</h3>
         <ul className="divide-y divide-white/5 rounded-3xl bg-slate-800/70 px-4">
-          {s.recent.map((g) => (
+          {s.recent.map((g) =>
+            g.imported ? (
+              <li key={g.tableId} className="flex items-center gap-3 py-3">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold">{g.tableName ?? 'משחק מיובא'}</span>
+                  <span className="block text-xs text-slate-400">
+                    {formatDate(g.endedAt)} · <span className="rounded-full bg-sky-400/15 px-1.5 py-0.5 font-bold text-sky-300">מיובא</span>
+                  </span>
+                </span>
+                <span className={`shrink-0 font-extrabold ${tone(g.net)}`}>{signed(g.net)}</span>
+              </li>
+            ) : (
             <li key={g.tableId} className="flex items-center gap-2">
               <button type="button" onClick={() => onOpenTable(g.tableId)} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-start">
                 <span className="min-w-0 flex-1">
@@ -217,11 +255,13 @@ function Mine({ games, hiddenCount, onOpenTable, onOptions, onShowHidden }) {
               </button>
               <OptionsButton onClick={() => onOptions(g)} />
             </li>
-          ))}
+            )
+          )}
         </ul>
         <p className="mt-2 text-xs text-slate-500">⋯ להסתרת משחק (למשל משחק ניסיון) מהסטטיסטיקה שלך, או מחיקה לצמיתות</p>
       </section>
 
+      {importActions}
       <HiddenLink count={hiddenCount} onShowHidden={onShowHidden} />
     </div>
   );
@@ -288,7 +328,10 @@ export default function StatsScreen({
   hide = hideGame,
   unhide = unhideGame,
   removeForGood = removeGameForGood,
+  importer = importGames,
+  deleteImported = deleteAllImported,
 }) {
+  const [importing, setImporting] = useState(false);
   const [tab, setTab] = useState('mine');
   const [showHidden, setShowHidden] = useState(false);
   const [options, setOptions] = useState(null); // { game, hidden } for the options sheet
@@ -333,7 +376,7 @@ export default function StatsScreen({
         </button>
         <div>
           <h2 className="text-2xl font-extrabold">סטטיסטיקה</h2>
-          <p className="text-sm text-slate-400">משולחנות אונליין סגורים בלבד · רק אתה רואה</p>
+          <p className="text-sm text-slate-400">משולחנות אונליין סגורים ומשחקים שייבאת · רק אתה רואה</p>
         </div>
       </div>
 
@@ -370,8 +413,15 @@ export default function StatsScreen({
       ) : tab === 'mine' ? (
         <>
           <Mine
-            games={data.games}
+            games={[...data.games, ...data.imported]}
             hiddenCount={data.hidden.length}
+            importActions={
+              <ImportActions
+                importedCount={data.imported.length}
+                onImport={() => setImporting(true)}
+                onDeleteImported={() => run(() => deleteImported(), 'כל המשחקים המיובאים נמחקו 🗑️')}
+              />
+            }
             onOpenTable={onOpenTable}
             onOptions={(game) => setOptions({ game, hidden: false })}
             onShowHidden={() => setShowHidden(true)}
@@ -388,6 +438,25 @@ export default function StatsScreen({
       )}
       {/* Keeps the last card off the bottom edge (iOS toolbar tint). */}
       <div className="h-6 shrink-0" />
+
+      {importing && data && (
+        <ImportSheet
+          onlineGames={data.games}
+          importedGames={data.imported}
+          onClose={() => setImporting(false)}
+          onSave={async (games) => {
+            try {
+              await importer(games);
+              showToast(`יובאו ${games.length} משחקים ✓`);
+              await reload();
+              return true;
+            } catch (e) {
+              showToast(`הייבוא נכשל: ${e.message}`);
+              return false;
+            }
+          }}
+        />
+      )}
 
       {options && (
         <GameOptions

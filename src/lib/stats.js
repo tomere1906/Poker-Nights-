@@ -2,7 +2,8 @@
 // my_tablemates views (src/lib/statsData.js), which already contain only
 // games the viewer played in. Amounts are whole shekels.
 
-// game: { tableId, tableName, endedAt (ms), net, buyInTotal, buyInCount, playerCount }
+// game: { tableId, tableName, endedAt (ms), net, buyInTotal, buyInCount, playerCount, imported? }
+// Imported nights (from a file) count everywhere except the buy-in facts: they have no buy-ins.
 export function personalStats(games) {
   const sorted = [...games].sort((a, b) => a.endedAt - b.endedAt);
   const count = sorted.length;
@@ -24,8 +25,9 @@ export function personalStats(games) {
     series.push({ ...g, cumulative });
   }
 
-  const buyInCount = sorted.reduce((sum, g) => sum + g.buyInCount, 0);
-  const buyInTotal = sorted.reduce((sum, g) => sum + g.buyInTotal, 0);
+  const online = sorted.filter((g) => !g.imported);
+  const buyInCount = online.reduce((sum, g) => sum + g.buyInCount, 0);
+  const buyInTotal = online.reduce((sum, g) => sum + g.buyInTotal, 0);
 
   return {
     count,
@@ -37,8 +39,10 @@ export function personalStats(games) {
     // "הפסיד הכל": left with no chips at all.
     lostAll: sorted.filter((g) => g.buyInTotal > 0 && g.net + g.buyInTotal === 0).length,
     // Buy-ins per night (count, one decimal) and their average amount (whole shekels).
-    avgBuyIns: count ? Math.round((buyInCount / count) * 10) / 10 : 0,
-    avgBuyInAmount: count ? Math.round(buyInTotal / count) : 0,
+    avgBuyIns: online.length ? Math.round((buyInCount / online.length) * 10) / 10 : 0,
+    avgBuyInAmount: online.length ? Math.round(buyInTotal / online.length) : 0,
+    onlineCount: online.length,
+    importedCount: count - online.length,
     currentStreak: run,
     bestStreak,
     series,

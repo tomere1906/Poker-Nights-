@@ -14,6 +14,7 @@
 --         T7 (516+): a player who leaves mid-game gives up their seat
 --         T8 (540+): a closed game stays open for settling until everyone has paid
 --         T9 (570+): cleaning "משחקים שניהלתי": hiding a game from your own list, deleting a closed game (original manager only)
+--         T10 (600+): imported game history: only the owner reads, adds and deletes
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -574,9 +575,35 @@ begin
       (590, '…gone from P''s stats',                                 'P', $$select count(*) from public.my_games where table_id = '88888888-8888-4888-8888-888888888888'$$, 'count:0'),
       (591, '…and from the co-manager Q''s stats',                'Q', $$select count(*) from public.my_games where table_id = '88888888-8888-4888-8888-888888888888'$$, 'count:0'),
       (592, '…nothing of it is left anywhere',                       'postgres', $$select (select count(*) from public.table_players where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.settlement_transfers where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.table_log where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.table_members where table_id = '88888888-8888-4888-8888-888888888888') + (select count(*) from public.managed_list_hidden where table_id = '88888888-8888-4888-8888-888888888888')$$, 'count:0'),
+      -- ---------------- T10: imported game history (personal stats only) ----------------
+      -- M imports two nights; P imports one. Only the owner sees, adds and deletes; nothing else changes.
+      (600, 'M imports two nights',                                  'M', $$insert into public.imported_games (import_id, played_on, net, note) values ('10000000-0000-4000-8000-000000000001', '2026-02-08', -120, 'אצל דני'), ('10000000-0000-4000-8000-000000000001', '2026-02-15', 80, null)$$, 'ok'),
+      (601, 'M sees his imported nights',                            'M', $$select count(*) from public.imported_games$$, 'count:2'),
+      (602, 'P sees none of M''s',                                   'P', $$select count(*) from public.imported_games$$, 'count:0'),
+      (603, 'A stranger sees none',                                  'S', $$select count(*) from public.imported_games$$, 'count:0'),
+      (604, 'anon can''t read imports',                              'anon', $$select count(*) from public.imported_games$$, 'deny'),
+      (605, 'anon can''t import',                                    'anon', $$insert into public.imported_games (import_id, played_on, net) values ('10000000-0000-4000-8000-000000000009', '2026-02-08', 10)$$, 'deny'),
+      (606, 'M can''t import into P''s history',                     'M', $$insert into public.imported_games (user_id, import_id, played_on, net) values ('22222222-2222-4222-8222-222222222222', '10000000-0000-4000-8000-000000000002', '2026-02-08', 500)$$, 'deny'),
+      (607, 'M can''t set the import time',                          'M', $$insert into public.imported_games (import_id, played_on, net, imported_at) values ('10000000-0000-4000-8000-000000000002', '2026-02-08', 10, '2020-01-01')$$, 'deny'),
+      (608, 'M can''t pick the row id',                              'M', $$insert into public.imported_games (id, import_id, played_on, net) values ('10000000-0000-4000-8000-0000000000aa', '10000000-0000-4000-8000-000000000002', '2026-02-08', 10)$$, 'deny'),
+      (609, 'Imported nights are never updated',                     'M', $$update public.imported_games set net = 1000$$, 'deny'),
+      (610, 'P can''t delete M''s imports',                          'P', $$delete from public.imported_games$$, 'rows:0'),
+      (611, 'P imports one night',                                   'P', $$insert into public.imported_games (import_id, played_on, net) values ('10000000-0000-4000-8000-000000000003', '2026-03-01', 40)$$, 'ok'),
+      (612, 'A note of only hidden characters is no note',           'M', $$insert into public.imported_games (import_id, played_on, net, note) values ('10000000-0000-4000-8000-000000000001', '2026-03-01', 0, chr(8207) || '  ' || chr(8203))$$, 'ok'),
+      (613, '…stored without a note',                                'M', $$select count(*) from public.imported_games where played_on = '2026-03-01' and net = 0 and note is null$$, 'count:1'),
+      (614, 'Hidden characters are removed from a note',             'M', $$insert into public.imported_games (import_id, played_on, net, note) values ('10000000-0000-4000-8000-000000000001', '2026-03-08', 0, 'א' || chr(8238) || 'ב')$$, 'ok'),
+      (615, '…the note is clean',                                    'M', $$select count(*) from public.imported_games where played_on = '2026-03-08' and note = 'אב'$$, 'count:1'),
+      (616, 'A note longer than 200 characters is refused',          'M', $$insert into public.imported_games (import_id, played_on, net, note) values ('10000000-0000-4000-8000-000000000001', '2026-03-09', 0, repeat('א', 201))$$, 'error:23514'),
+      (617, 'A date before 2000 is refused',                         'M', $$insert into public.imported_games (import_id, played_on, net) values ('10000000-0000-4000-8000-000000000001', '1999-12-31', 0)$$, 'error:23514'),
+      (618, 'An absurd amount is refused',                           'M', $$insert into public.imported_games (import_id, played_on, net) values ('10000000-0000-4000-8000-000000000001', '2026-03-09', 20000000)$$, 'error:23514'),
+      (619, 'Imports never show up in anyone''s tablemates',         'P', $$select count(*) from public.my_tablemates where games > (select count(*) from public.my_games)$$, 'count:0'),
+      (620, '(setup) M already has 1,996 more imported nights',      'postgres', $$insert into public.imported_games (user_id, import_id, played_on, net) select '11111111-1111-4111-8111-111111111111', '10000000-0000-4000-8000-000000000004', date '2026-01-01', g from generate_series(1, 1996) g$$, 'ok'),
+      (621, 'At 2,000 imported nights, one more is refused',         'M', $$insert into public.imported_games (import_id, played_on, net) values ('10000000-0000-4000-8000-000000000001', '2026-03-10', 0)$$, 'error:54000'),
+      (622, '"מחק את כל המיובאים": M deletes all of his',            'M', $$delete from public.imported_games$$, 'rows:2000'),
+      (623, '…P''s import is untouched',                             'P', $$select count(*) from public.imported_games$$, 'count:1'),
 
       -- ---------------- every table has RLS on ----------------
-      (90, 'RLS is enabled on all 11 tables',          'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments','settlement_transfers','profile_phones','managed_list_hidden') and rowsecurity$$, 'count:11'),
+      (90, 'RLS is enabled on all 12 tables',          'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments','settlement_transfers','profile_phones','managed_list_hidden','imported_games') and rowsecurity$$, 'count:12'),
       (91, 'Realtime publishes only table_log',        'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename <> 'table_log'$$, 'count:0'),
       (92, '…and table_log is published',              'M', $$select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'table_log'$$, 'count:1')
     ) as t(i, name, who, sql, expect)

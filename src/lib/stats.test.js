@@ -71,3 +71,22 @@ describe('tablemates', () => {
     expect(sortMates(mates, 'average').map((m) => m.key)).toEqual(['b', 'a', 'g']);
   });
 });
+
+describe('personalStats with imported nights', () => {
+  const imported = (n, net) => ({ tableId: `import:${n}`, imported: true, tableName: null, endedAt: day(n), net, buyInTotal: 0, buyInCount: 0, playerCount: null });
+  const s = personalStats([game(1, 100, 200, 2), imported(2, -300), game(3, 50, 100, 1), imported(4, 20)]);
+
+  it('count in the totals, the best/worst night and the streaks', () => {
+    expect(s.count).toBe(4);
+    expect(s.total).toBe(-130);
+    expect(s.worst.tableId).toBe('import:2');
+    expect(s.currentStreak).toBe(2);
+    expect(s.importedCount).toBe(2);
+  });
+
+  it('but buy-in facts come only from online games', () => {
+    expect(s.avgBuyIns).toBe(1.5);
+    expect(s.avgBuyInAmount).toBe(150);
+    expect(s.lostAll).toBe(0);
+  });
+});
