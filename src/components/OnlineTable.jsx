@@ -7,7 +7,7 @@ import TableLog from './TableLog.jsx';
 import TableManageSheet from './TableManageSheet.jsx';
 import OnlineEndGame from './OnlineEndGame.jsx';
 import Settlement from './Settlement.jsx';
-import { settle } from '../lib/settlement.js';
+import { adjustReady, settle, storedAdjustment } from '../lib/settlement.js';
 import { openBit } from '../lib/bit.js';
 import { copyText } from '../lib/clipboard.js';
 import { formatShekel } from '../lib/format.js';
@@ -21,7 +21,8 @@ const HEADER_BUTTON = 'rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-
 const BIG_BUTTON = 'w-full rounded-2xl py-4 text-lg font-extrabold transition active:scale-[0.98]';
 
 // Closing the table: the manager taps twice. Co-managers see who closes it.
-function CloseTableButton({ isManager, missing, onClose }) {
+// blocked: results that don't add up and nobody chose who covers the difference.
+function CloseTableButton({ isManager, missing, blocked, onClose }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   if (!isManager) {
@@ -30,7 +31,7 @@ function CloseTableButton({ isManager, missing, onClose }) {
   return (
     <button
       type="button"
-      disabled={missing > 0 || busy}
+      disabled={missing > 0 || blocked || busy}
       onClick={async () => {
         if (!confirm) return setConfirm(true);
         setBusy(true);
@@ -47,7 +48,9 @@ function CloseTableButton({ isManager, missing, onClose }) {
     >
       {missing > 0
         ? 'יש שחקנים בלי תוצאה'
-        : busy
+        : blocked
+          ? 'בחרו מי מכסה את ההפרש'
+          : busy
           ? 'סוגר…'
           : confirm
             ? 'בטוח? התוצאות יינעלו לכולם – הקש שוב'
@@ -153,6 +156,19 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
       : view.players.map((p) => ({ id: p.id, net: netOf(view, p) ?? 0 }));
   }, [view]);
 
+  // A closed table: how the stored results differ from the results as typed
+  // ("תיקון הפרש": who covered results that didn't add up, and how much).
+  const closedAdjustment = useMemo(() => {
+    if (!view?.ended) return undefined;
+    const typed = view.players.map((p) => ({ id: p.id, net: netOf(view, p) ?? 0 }));
+    const stored = storedAdjustment(typed, entries, view.settings.rounding);
+    if (!stored) return null;
+    // The manager's choice names how it was split, if it matches what was stored.
+    const { method, player } = view.adjust ?? {};
+    const fits = method && (method !== 'player' || (stored.changes.length === 1 && stored.changes[0].id === player));
+    return { ...stored, method: fits ? method : null };
+  }, [view, entries]);
+
   // "לא כאן": cash is handed only to winners who are present.
   const absent = useMemo(() => (view ? view.players.filter(isAbsent).map((p) => p.id) : []), [view]);
   // The manager's seat takes cash that no present winner is owed (and passes it on).
@@ -245,6 +261,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         manager={managerSeat}
         tableName={view.name}
         date={view.endedAt}
+        adjustment={closedAdjustment}
         notice={
           <>
             {view.settling ? (
@@ -322,12 +339,15 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         manager={managerSeat}
         onAbsentChange={(id, away) => actions.setAbsent(id, away).catch(fail)}
         onRoundingChange={view.isManager ? (unit) => actions.setRounding(unit).catch(fail) : null}
+        adjust={view.adjust}
+        onAdjustChange={view.isManager ? (adjust) => actions.setAdjust(adjust).catch(fail) : null}
         tableName={view.name}
         onBack={() => setStep('end')}
       >
         <CloseTableButton
           isManager={view.isManager}
           missing={missing}
+          blocked={!adjustReady(entries, view.settings.rounding, view.adjust)}
           onClose={async () => {
             try {
               // Exactly what this screen shows: the whole-shekel results and who pays whom.
@@ -337,6 +357,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
                 cash: view.cash,
                 absent,
                 manager: managerSeat,
+                adjust: view.adjust,
               });
               await actions.endGame(nets, transfers);
               showToast('השולחן נסגר – התוצאות נשמרו 🎉');

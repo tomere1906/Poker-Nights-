@@ -27,6 +27,7 @@ describe('friendlyError', () => {
   it('permissions: in general, manager-only actions, an ended game, a missing table', () => {
     expect(say(pg('42501', 'new row violates row-level security policy for table "buy_ins"'))).toBe('אין לך הרשאה לפעולה הזו');
     expect(say(pg('42501', 'Only the table manager can rename the table'))).toBe(ERRORS.managerOnly);
+    expect(say(pg('42501', 'Only the table manager can choose who covers the difference'))).toBe(ERRORS.managerOnly);
     expect(say(pg('42501', 'The game has ended; reopen it to make changes'))).toBe(ERRORS.gameEnded);
     expect(say(pg('42501', 'Table not found'))).toBe(ERRORS.tableGone);
     expect(say(pg('PGRST116', 'JSON object requested, multiple (or no) rows returned'))).toBe(ERRORS.tableGone);
@@ -36,6 +37,7 @@ describe('friendlyError', () => {
     expect(say(pg('23514', 'Every player needs a final result, and the results must add up to 0'))).toBe(ERRORS.resultsUnbalanced);
     expect(say(pg('23514', "The transfers don't match the results"))).toBe(ERRORS.transfersMismatch);
     expect(say(pg('23514', 'new row for relation "profiles" violates check constraint "profiles_name_length"'))).toBe(ERRORS.invalid);
+    expect(say(pg('23514', 'The chosen player is not at this table'))).toBe(ERRORS.invalid);
     expect(say(pg('23503', 'insert or update on table "buy_ins" violates foreign key constraint'))).toBe(ERRORS.missing);
     expect(say(pg('54000', 'Too many imported games'))).toBe(ERRORS.importLimit);
     expect(say(pg('57014', 'canceling statement due to statement timeout'))).toBe(ERRORS.timeout);

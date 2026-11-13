@@ -208,7 +208,7 @@ export default function EndGame({ state, onFinal, onBack, onSettle, onAddCash, o
           <div className="rounded-2xl bg-amber-300/15 px-4 py-3 text-sm text-amber-200 ring-1 ring-amber-300/30">
             ⚠️ {diff > 0 ? 'הרווחים גדולים מההפסדים' : 'ההפסדים גדולים מהרווחים'} ב־{formatShekel(Math.abs(diff))}.
             <br />
-            אפשר לבדוק שוב, או להמשיך – ההפרש ייספג אצל המנצח הגדול.
+            אפשר לבדוק שוב, או להמשיך – במסך הבא בוחרים מי מכסה את ההפרש.
           </div>
         )}
 

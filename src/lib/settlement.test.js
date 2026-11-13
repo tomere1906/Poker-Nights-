@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TRANSFER, ROUNDING_UNITS, cashParts, cashRoom, roundNets, roundTo, settle, splitUnfitBills, transferProblems } from './settlement.js';
+import {
+  MIN_TRANSFER,
+  ROUNDING_UNITS,
+  adjustNets,
+  adjustReady,
+  cashParts,
+  cashRoom,
+  cleanAdjust,
+  countingGap,
+  needsAdjust,
+  roundNets,
+  roundTo,
+  settle,
+  splitUnfitBills,
+  storedAdjustment,
+  transferProblems,
+} from './settlement.js';
 
 const entries = (obj) => Object.entries(obj).map(([id, net]) => ({ id, net }));
 
@@ -522,5 +538,138 @@ describe('transferProblems (the check the database runs when closing a table)', 
     ).toContain('c');
     // More cash than was recorded.
     expect(transferProblems(nets, [{ ...real[0], cash: 100 }, real[1]], cash)).toContain('p');
+  });
+});
+
+describe('covering a counting mistake ("הסכומים לא מתאזנים")', () => {
+  // A real night: the results add up to +50 (more counted than went in).
+  const night = entries({ a: 200, b: 100, c: -150, d: -100 });
+  const changes = (adjustment) => Object.fromEntries(adjustment.changes.map((c) => [c.id, c.amount]));
+  const sum = (nets) => nets.reduce((s, e) => s + e.net, 0);
+
+  it('measures the gap and asks only when rounding does not fix it', () => {
+    expect(countingGap(night)).toBe(50);
+    expect(needsAdjust(night, 10)).toBe(true);
+    // Balanced: nothing to choose.
+    expect(needsAdjust(entries({ a: 100, b: -100 }), 10)).toBe(false);
+    // A leftover of rounding alone (the typed results add up): no question.
+    expect(needsAdjust(entries({ a: 5, b: 5, c: -10 }), 10)).toBe(false);
+    // A 3 ₪ mistake that rounding to 10 happens to cancel: no question.
+    expect(needsAdjust(entries({ a: 103, b: -100 }), 10)).toBe(false);
+  });
+
+  it('equal: every player covers the same share, in rounding units', () => {
+    const { nets, adjustment } = adjustNets(night, 10, { method: 'equal' });
+    // 50 = 5 units of 10 among 4 players: one each, the extra unit to the biggest winner.
+    expect(changes(adjustment)).toEqual({ a: -20, b: -10, c: -10, d: -10 });
+    expect(adjustment).toMatchObject({ method: 'equal', gap: 50 });
+    expect(sum(nets)).toBe(0);
+  });
+
+  it('winners: split between the winners by how much each won', () => {
+    const { nets, adjustment } = adjustNets(night, 10, { method: 'winners' });
+    // 200 : 100 → 33.3 and 16.7 → 30 and 20 (largest remainder).
+    expect(changes(adjustment)).toEqual({ a: -30, b: -20 });
+    expect(nets.find((e) => e.id === 'a').net).toBe(170);
+    expect(sum(nets)).toBe(0);
+  });
+
+  it('player: one chosen player covers all of it', () => {
+    const { nets, adjustment } = adjustNets(night, 10, { method: 'player', player: 'c' });
+    expect(changes(adjustment)).toEqual({ c: -50 });
+    expect(nets.find((e) => e.id === 'c').net).toBe(-200);
+  });
+
+  it('missing money (the results add up below 0) moves the results up', () => {
+    const { nets, adjustment } = adjustNets(entries({ a: 100, b: -150 }), 10, { method: 'equal' });
+    expect(adjustment.gap).toBe(-50);
+    // 5 units between 2: 3 and 2, the extra one to the bigger result.
+    expect(changes(adjustment)).toEqual({ a: 30, b: 20 });
+    expect(sum(nets)).toBe(0);
+  });
+
+  it('with unit 1 the shares are whole shekels', () => {
+    const { adjustment } = adjustNets(entries({ a: 120, b: 80, c: -150 }), 1, { method: 'equal' });
+    // 50 between 3: 17 + 17 + 16.
+    expect(changes(adjustment)).toEqual({ a: -17, b: -17, c: -16 });
+  });
+
+  it('without a choice (or when it cannot apply) the biggest winner takes it, as before', () => {
+    expect(changes(adjustNets(night, 10).adjustment)).toEqual({ a: -50 });
+    expect(adjustNets(night, 10).adjustment.method).toBe('biggest');
+    // The chosen player is not at the table.
+    expect(changes(adjustNets(night, 10, { method: 'player', player: 'zz' }).adjustment)).toEqual({ a: -50 });
+    // No winners to split between.
+    const noWinners = adjustNets(entries({ a: 0, b: -50 }), 10, { method: 'winners' });
+    expect(noWinners.adjustment.method).toBe('biggest');
+    expect(sum(noWinners.nets)).toBe(0);
+    // roundNets keeps its old behavior.
+    expect(roundNets(night, 10)).toEqual(adjustNets(night, 10).nets);
+  });
+
+  it('nothing to cover: no adjustment', () => {
+    expect(adjustNets(entries({ a: 100, b: -100 }), 10, { method: 'equal' }).adjustment).toBeNull();
+  });
+
+  it('cleanAdjust accepts only the three choices', () => {
+    expect(cleanAdjust({ method: 'equal', player: 'x' })).toEqual({ method: 'equal' });
+    expect(cleanAdjust({ method: 'player' })).toEqual({ method: 'player', player: null });
+    expect(cleanAdjust({ method: 'player', player: 'p' })).toEqual({ method: 'player', player: 'p' });
+    expect(cleanAdjust({ method: 'biggest' })).toBeNull();
+    expect(cleanAdjust(null)).toBeNull();
+  });
+
+  it('settle passes the choice through and still settles everything', () => {
+    const result = settle(night, { unit: 10, adjust: { method: 'winners' } });
+    expect(changes(result.adjustment)).toEqual({ a: -30, b: -20 });
+    expectBalanced(result);
+    expect(transferProblems(result.nets, result.transfers)).toEqual([]);
+  });
+
+  it('a closed table shows the same adjustment from the stored results', () => {
+    const { nets, adjustment } = adjustNets(night, 10, { method: 'winners' });
+    expect(storedAdjustment(night, nets, 10)).toEqual({ method: null, gap: 50, changes: adjustment.changes });
+    expect(storedAdjustment(entries({ a: 100, b: -100 }), entries({ a: 100, b: -100 }), 10)).toBeNull();
+  });
+
+  it('random nights with mistakes: every method balances, stays round and moves exactly the gap', () => {
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let n = 0; n < 2000; n++) {
+      const count = 2 + Math.floor(rand() * 8);
+      const night = Array.from({ length: count }, (_, i) => ({ id: `p${i}`, net: Math.round((rand() - 0.5) * 800) }));
+      const unit = ROUNDING_UNITS[n % ROUNDING_UNITS.length];
+      const adjust = [{ method: 'equal' }, { method: 'winners' }, { method: 'player', player: `p${n % count}` }, null][n % 4];
+      const { nets, adjustment } = adjustNets(night, unit, adjust);
+      expect(sum(nets)).toBe(0);
+      for (const e of nets) expect(Math.abs(e.net % unit)).toBe(0);
+      const rounded = night.reduce((s, e) => s + roundTo(e.net, unit), 0);
+      const moved = (adjustment?.changes ?? []).reduce((s, c) => s + c.amount, 0);
+      expect(moved + rounded).toBe(0);
+      for (const c of adjustment?.changes ?? []) expect(Math.abs(c.amount % unit)).toBe(0);
+      if (adjust?.method === 'player' && adjustment) {
+        expect(adjustment.changes.map((c) => c.id)).toEqual([adjust.player]);
+      }
+      if (adjust?.method === 'winners' && adjustment?.method === 'winners') {
+        // Only winners move.
+        for (const c of adjustment.changes) expect(roundTo(night.find((e) => e.id === c.id).net, unit)).toBeGreaterThan(0);
+      }
+      if (n % 10 === 0) expectBalanced(settle(night, { unit, adjust }));
+    }
+  });
+});
+
+describe('adjustReady (the settlement waits for the manager)', () => {
+  const night = entries({ a: 200, b: 100, c: -150, d: -100 });
+  it('waits only when there is something to cover and no usable choice', () => {
+    expect(adjustReady(entries({ a: 100, b: -100 }), 10)).toBe(true);
+    expect(adjustReady(entries({ a: 5, b: 5, c: -10 }), 10)).toBe(true);
+    expect(adjustReady(night, 10)).toBe(false);
+    expect(adjustReady(night, 10, { method: 'equal' })).toBe(true);
+    expect(adjustReady(night, 10, { method: 'winners' })).toBe(true);
+    expect(adjustReady(night, 10, { method: 'player', player: null })).toBe(false);
+    expect(adjustReady(night, 10, { method: 'player', player: 'zz' })).toBe(false);
+    expect(adjustReady(night, 10, { method: 'player', player: 'd' })).toBe(true);
+    expect(adjustReady(entries({ a: 0, b: -50 }), 10, { method: 'winners' })).toBe(false);
   });
 });
