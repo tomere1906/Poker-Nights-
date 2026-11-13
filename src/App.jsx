@@ -246,6 +246,8 @@ export default function App() {
           absent={localAbsent}
           onAbsentChange={(id, absent) => dispatch({ type: 'setAbsent', id, absent })}
           onRoundingChange={(unit) => dispatch({ type: 'setRounding', unit })}
+          adjust={state.adjust}
+          onAdjustChange={(adjust) => dispatch({ type: 'setAdjust', adjust })}
           onBack={() => setView('end')}
         >
           <NewGameButton

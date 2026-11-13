@@ -62,6 +62,21 @@ describe('table settings', () => {
     expect(gameReducer(s, { type: 'setRounding', unit: 3 }).settings.rounding).toBe(10);
   });
 
+  it('keeps the choice of who covers results that do not add up, until a new game', () => {
+    let s = gameReducer(initialState, { type: 'openTable', settings: {} });
+    expect(s.adjust).toBeNull();
+    s = gameReducer(seat(s, 'א'), { type: 'setAdjust', adjust: { method: 'winners' } });
+    expect(s.adjust).toEqual({ method: 'winners' });
+    s = gameReducer(s, { type: 'setAdjust', adjust: { method: 'player', player: 'x' } });
+    expect(s.adjust).toEqual({ method: 'player', player: 'x' });
+    expect(gameReducer(s, { type: 'setAdjust', adjust: { method: 'nonsense' } }).adjust).toBeNull();
+    expect(gameReducer(s, { type: 'newGame' }).adjust).toBeNull();
+    // Saves from before the choice existed (or with a broken one) load with none.
+    expect(normalizeState({ ...s, adjust: undefined }).adjust).toBeNull();
+    expect(normalizeState({ ...s, adjust: { method: 'all' } }).adjust).toBeNull();
+    expect(normalizeState(s).adjust).toEqual({ method: 'player', player: 'x' });
+  });
+
   it('changes the buy-in buttons mid-game, keeping players and rounding', () => {
     let s = gameReducer(initialState, { type: 'openTable', settings: { initialBuyIn: 50, rebuyAmounts: [50, 100], rounding: 5 } });
     s = gameReducer(s, { type: 'startGame' });

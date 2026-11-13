@@ -7,9 +7,10 @@ import { DEFAULT_CHIP_VALUE, MAX_PLAYERS, cleanChipValue, cleanSettings, exitChi
 import { firstFreeColor, suggestedColor } from './colors.js';
 import { appUrl } from './auth.js';
 import { friendlyError } from './errors.js';
+import { cleanAdjust } from './settlement.js';
 
 const TABLE_COLUMNS =
-  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, chip_value, buy_in_mode, end_mode, invite_code, created_at, ended_at, settled_at, settled_manually';
+  'id, name, manager_id, status, initial_buy_in, rebuy_amounts, rounding, chip_value, buy_in_mode, end_mode, invite_code, created_at, ended_at, settled_at, settled_manually, adjust_method, adjust_player';
 
 // Same limit as the database check (poker_tables_name_length).
 export const MAX_TABLE_NAME = 30;
@@ -260,6 +261,8 @@ export function toView(raw, userId) {
       chipValue: table.chip_value,
     }),
     buyInMode: table.buy_in_mode,
+    // "הסכומים לא מתאזנים": who covers the difference (chosen by the manager).
+    adjust: cleanAdjust({ method: table.adjust_method, player: table.adjust_player }),
     inviteCode: table.invite_code,
     players,
     people,
@@ -443,6 +446,17 @@ function makeActions(view) {
     // "עיגול סכומים" (the database lets only the manager change it).
     async setRounding(unit) {
       must(await supabase.from('poker_tables').update({ rounding: unit }).eq('id', tableId));
+    },
+
+    // Who covers results that don't add up (the database lets only the manager choose; logged).
+    async setAdjust(adjust) {
+      const choice = cleanAdjust(adjust);
+      must(
+        await supabase
+          .from('poker_tables')
+          .update({ adjust_method: choice?.method ?? null, adjust_player: choice?.player ?? null })
+          .eq('id', tableId)
+      );
     },
 
     async setEndMode(mode) {

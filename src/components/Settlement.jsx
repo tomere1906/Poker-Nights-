@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { cashParts, settle } from '../lib/settlement.js';
+import { adjustReady, cashParts, countingGap, needsAdjust, roundTo, settle } from '../lib/settlement.js';
 import { formatDate, formatShekel } from '../lib/format.js';
 import { renderSettlementPng, shareOrDownload } from '../lib/settlementImage.js';
+import { AdjustChoice, AdjustmentNote } from './AdjustPanel.jsx';
 import Avatar from './Avatar.jsx';
 import PlayerName from './PlayerName.jsx';
 import Podium from './Podium.jsx';
@@ -124,6 +125,10 @@ function RowFooter({ row, canMark, onTogglePaid, phone, onBit }) {
 // the viewer (only the payer gets one), onBit(row, phone): copy it and open Bit.
 // showPodium: the night's top 3 winners on top (once the table is closed;
 // also in the shared image). children: extra buttons under "share".
+// "הסכומים לא מתאזנים": before closing, adjust is the manager's choice of who
+// covers the difference and onAdjustChange(adjust) lets them choose (null:
+// read only); nothing is settled until there's a usable choice. A closed
+// table passes `adjustment` instead (what was stored, or null for none).
 export default function Settlement({
   players,
   entries,
@@ -142,6 +147,9 @@ export default function Settlement({
   phoneFor = null,
   onBit = null,
   showPodium = false,
+  adjust = null,
+  onAdjustChange = null,
+  adjustment: closedAdjustment,
   onBack,
   children,
 }) {
@@ -153,10 +161,15 @@ export default function Settlement({
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const nameOf = (id) => byId.get(id)?.name ?? 'שחקן';
   const computed = useMemo(
-    () => settle(entries, { unit: rounding, cash, absent, manager }),
-    [entries, rounding, cash, absent, manager]
+    () => settle(entries, { unit: rounding, cash, absent, manager, adjust }),
+    [entries, rounding, cash, absent, manager, adjust]
   );
   const { nets } = computed;
+  const closed = closedAdjustment !== undefined;
+  const asking = !closed && needsAdjust(entries, rounding);
+  // Results that don't add up: nothing is settled until the manager chooses.
+  const waiting = !closed && !adjustReady(entries, rounding, adjust);
+  const adjustment = closed ? closedAdjustment : computed.adjustment;
   // A closed online table shows exactly what was stored when it was closed.
   const transfers = stored.length > 0 ? stored : computed.transfers;
   const paidCount = stored.filter((t) => t.paidAt).length;
@@ -211,7 +224,17 @@ export default function Settlement({
 
       {notice}
 
-      {showPodium && <Podium nets={nets} byId={byId} />}
+      {showPodium && !waiting && <Podium nets={nets} byId={byId} />}
+
+      {asking && (
+        <AdjustChoice
+          gap={countingGap(entries)}
+          adjust={adjust}
+          players={players}
+          canWinners={entries.some((e) => roundTo(e.net, rounding) > 0)}
+          onChange={onAdjustChange}
+        />
+      )}
 
       {onRoundingChange && (
         <div className="mb-4 rounded-3xl bg-slate-800/70 p-3 ring-1 ring-white/5">
@@ -245,6 +268,8 @@ export default function Settlement({
         </div>
       )}
 
+      {!waiting && adjustment && <AdjustmentNote adjustment={adjustment} nameOf={nameOf} />}
+
       {stored.length > 0 && (
         <p
           className={`mb-3 rounded-2xl px-4 py-2 text-center text-sm font-bold ${
@@ -255,7 +280,9 @@ export default function Settlement({
         </p>
       )}
 
-      {transfers.length === 0 ? (
+      {waiting ? (
+        <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-slate-300">בחרו מי מכסה את ההפרש, ואז נחשב מי מעביר למי</p>
+      ) : transfers.length === 0 ? (
         <p className="rounded-3xl bg-slate-800/70 p-6 text-center text-lg">כולם יצאו מאוזנים 🤝</p>
       ) : (
         <ul className="space-y-2">
@@ -290,8 +317,8 @@ export default function Settlement({
         </ul>
       )}
 
-      <h3 className="mt-6 mb-2 text-sm font-medium text-slate-400">תוצאות הערב</h3>
-      <div className="flex flex-wrap gap-2">
+      {!waiting && <h3 className="mt-6 mb-2 text-sm font-medium text-slate-400">תוצאות הערב</h3>}
+      <div className={`flex flex-wrap gap-2 ${waiting ? 'hidden' : ''}`}>
         {[...nets]
           .sort((a, b) => b.net - a.net)
           .map((e) => (
@@ -311,8 +338,8 @@ export default function Settlement({
         <button
           type="button"
           onClick={share}
-          disabled={shareState === 'working'}
-          className="w-full rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:opacity-70"
+          disabled={waiting || shareState === 'working'}
+          className="w-full rounded-2xl bg-emerald-400 py-4 text-lg font-extrabold text-slate-900 shadow-lg shadow-emerald-400/20 transition active:scale-[0.98] disabled:opacity-40"
         >
           {shareState === 'working'
             ? 'מכין תמונה…'

@@ -74,6 +74,16 @@ export function describeLog(entry) {
       return d.mode === 'self_add' ? `${who} שינה: כל אחד מוסיף לעצמו כניסות` : `${who} שינה: רק מנהלים מוסיפים כניסות`;
     case 'rounding_changed':
       return d.new === 1 ? `${who} שינה: בלי עיגול (לשקל)` : `${who} שינה את עיגול הסכומים ל־${formatShekel(d.new)}`;
+    case 'adjust_changed':
+      if (d.method === 'equal') return `${who} בחר: את ההפרש מחלקים שווה בין כל השחקנים`;
+      if (d.method === 'winners') return `${who} בחר: את ההפרש מחלקים בין המנצחים לפי הרווח`;
+      if (d.method === 'player') return d.name ? `${who} בחר: ${d.name} מכסה את ההפרש` : `${who} בחר ששחקן מסוים יכסה את ההפרש`;
+      return `${who} ביטל את הבחירה מי מכסה את ההפרש`;
+    case 'results_adjusted': {
+      // Who absorbed how much when the results didn't add up (written when the game ended).
+      const moved = (d.changes ?? []).map((c) => `${c.name ?? 'שחקן'} ${formatShekel(c.amount, { signed: true })}`).join(', ');
+      return d.gap ? `תיקון הפרש של ${formatShekel(Math.abs(d.gap))}: ${moved}` : `תיקון עיגול: ${moved}`;
+    }
     case 'settings_changed': {
       const buttons = (d.rebuy_amounts ?? []).map((a) => `+${a}`).join(' ');
       if (!d.initial_buy_in) return `${who} עדכן את סכומי הכניסה`;

@@ -15,18 +15,112 @@ export function roundTo(value, unit = 1) {
   return Math.sign(value) * Math.round(Math.abs(value) / unit) * unit + 0;
 }
 
-// Round every net to a multiple of unit, then push any imbalance (rounding or
-// a counting mistake) onto the biggest winner so the nets sum to exactly 0.
-// The imbalance is itself a multiple of unit, so the winner stays round too.
-export function roundNets(entries, unit = 1) {
+// How a counting mistake is covered ("הסכומים לא מתאזנים"), chosen by the manager:
+// equal: split equally between all the players;
+// winners: split between the winners, by how much each won;
+// player: one player covers it all (adjust.player).
+export const ADJUST_METHODS = ['equal', 'winners', 'player'];
+
+// A valid choice or null. "שחקן מסוים" may wait for the player (player: null).
+export function cleanAdjust(adjust) {
+  if (!adjust || !ADJUST_METHODS.includes(adjust.method)) return null;
+  if (adjust.method === 'player') return { method: 'player', player: adjust.player ?? null };
+  return { method: adjust.method };
+}
+
+// The counting mistake: the results as typed add up to this instead of 0
+// (whole shekels; > 0: more was counted than went in).
+export function countingGap(entries) {
+  return Math.round(entries.reduce((sum, e) => sum + e.net, 0));
+}
+
+// Whether the manager has to choose how to cover a gap: the results don't add
+// up, and rounding them doesn't happen to fix it.
+export function needsAdjust(entries, unit = 1) {
+  if (countingGap(entries) === 0) return false;
+  return entries.reduce((sum, e) => sum + roundTo(e.net, unit), 0) !== 0;
+}
+
+// The settlement can be shown: nothing to cover, or the manager's choice
+// applies (the chosen player is at the table; there are winners to split between).
+export function adjustReady(entries, unit = 1, adjust = null) {
+  if (!needsAdjust(entries, unit)) return true;
+  const choice = cleanAdjust(adjust);
+  if (!choice) return false;
+  if (choice.method === 'player') return entries.some((e) => e.id === choice.player);
+  if (choice.method === 'winners') return entries.some((e) => roundTo(e.net, unit) > 0);
+  return true;
+}
+
+// Splits `count` rounding units by weight (largest remainders first; ties go
+// to the biggest winner, then the list order). Returns one count per weight.
+function splitUnits(count, weights, nets) {
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  const exact = weights.map((w) => (count * w) / total);
+  const units = exact.map(Math.floor);
+  let left = count - units.reduce((sum, u) => sum + u, 0);
+  const order = weights
+    .map((w, i) => i)
+    .filter((i) => weights[i] > 0)
+    .sort((a, b) => exact[b] - units[b] - (exact[a] - units[a]) || nets[b] - nets[a] || a - b);
+  for (let k = 0; left > 0; k = (k + 1) % order.length, left--) units[order[k]]++;
+  return units;
+}
+
+// Round every net to a multiple of unit, then cover the imbalance so the nets
+// sum to exactly 0. adjust (the manager's choice, see ADJUST_METHODS) spreads
+// it; without one (or when it can't apply: no winners, the player isn't at the
+// table) the biggest winner takes it, as for a leftover of rounding alone.
+// Every share is a multiple of unit, so all results stay round.
+// Returns { nets, adjustment }: adjustment = { method, gap, changes: [{ id, amount }] }
+// (amount: how much that player's result moved; only players whose result
+// moved), or null when nothing had to be covered.
+export function adjustNets(entries, unit = 1, adjust = null) {
   const nets = entries.map((e) => ({ id: e.id, net: roundTo(e.net, unit) }));
   const diff = nets.reduce((sum, e) => sum + e.net, 0);
-  if (diff !== 0 && nets.length > 0) {
-    let top = nets[0];
-    for (const e of nets) if (e.net > top.net) top = e;
-    top.net -= diff;
+  if (diff === 0 || nets.length === 0) return { nets, adjustment: null };
+
+  const values = nets.map((e) => e.net);
+  let method = cleanAdjust(adjust)?.method ?? 'biggest';
+  let weights;
+  if (method === 'equal') weights = nets.map(() => 1);
+  if (method === 'winners') {
+    weights = values.map((v) => Math.max(v, 0));
+    if (weights.every((w) => w === 0)) method = 'biggest';
   }
-  return nets;
+  if (method === 'player') {
+    weights = nets.map((e) => (e.id === adjust.player ? 1 : 0));
+    if (weights.every((w) => w === 0)) method = 'biggest';
+  }
+  if (method === 'biggest') {
+    const top = values.indexOf(Math.max(...values));
+    weights = nets.map((_, i) => (i === top ? 1 : 0));
+  }
+
+  const units = splitUnits(Math.abs(diff) / unit, weights, values);
+  const changes = [];
+  nets.forEach((e, i) => {
+    const amount = -Math.sign(diff) * units[i] * unit;
+    if (amount === 0) return;
+    e.net += amount;
+    changes.push({ id: e.id, amount });
+  });
+  return { nets, adjustment: { method, gap: countingGap(entries), changes } };
+}
+
+// Round every net to a multiple of unit and balance them (see adjustNets).
+export function roundNets(entries, unit = 1, adjust = null) {
+  return adjustNets(entries, unit, adjust).nets;
+}
+
+// A closed table: how each stored result differs from the results as typed
+// (rounded), i.e. what the adjustment was. finals: [{ id, net }] as stored.
+export function storedAdjustment(entries, finals, unit = 1) {
+  const typed = new Map(entries.map((e) => [e.id, roundTo(e.net, unit)]));
+  const changes = finals
+    .map((f) => ({ id: f.id, amount: f.net - (typed.get(f.id) ?? 0) }))
+    .filter((c) => c.amount !== 0);
+  return changes.length ? { method: null, gap: countingGap(entries), changes } : null;
 }
 
 // The searches below work in rounding units: `min` is MIN_TRANSFER in units.
@@ -463,11 +557,13 @@ function markCash(rows, paid) {
 // people who are present, so an absent winner gets a transfer instead. When no
 // present winner can take a bill, someone present takes it (manager: the
 // preferred one, else whoever keeps the settlement simplest) and passes it on.
-export function settle(entries, { unit = 1, cash = [], absent = [], manager = null } = {}) {
-  const nets = roundNets(entries, unit);
+// adjust: how a counting mistake is covered (see adjustNets); `adjustment` in
+// the result says whose result moved and by how much (null: nothing to cover).
+export function settle(entries, { unit = 1, cash = [], absent = [], manager = null, adjust = null } = {}) {
+  const { nets, adjustment } = adjustNets(entries, unit, adjust);
   const bills = capCash(cleanCash(cash, new Set(nets.map((e) => e.id))), nets);
   const cashPaid = cashByPayer(bills);
-  if (bills.length === 0) return { nets, cashPaid, transfers: planTransfers(nets, unit).map((t) => ({ ...t, cash: 0 })) };
+  if (bills.length === 0) return { nets, adjustment, cashPaid, transfers: planTransfers(nets, unit).map((t) => ({ ...t, cash: 0 })) };
   const loss = new Map(nets.map((e) => [e.id, e.net]));
   const away = new Set(absent);
   const rows =
@@ -475,5 +571,5 @@ export function settle(entries, { unit = 1, cash = [], absent = [], manager = nu
     (away.size ? placeBills(nets, bills, unit, new Set()) : null) ??
     markCash(planTransfers(nets, unit), cashPaid);
   // Group by payer (biggest loser first), biggest row first.
-  return { nets, cashPaid, transfers: rows.sort((x, y) => loss.get(x.from) - loss.get(y.from) || y.amount - x.amount) };
+  return { nets, adjustment, cashPaid, transfers: rows.sort((x, y) => loss.get(x.from) - loss.get(y.from) || y.amount - x.amount) };
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_ROUNDING, cleanRounding } from './settlement.js';
+import { DEFAULT_ROUNDING, cleanAdjust, cleanRounding } from './settlement.js';
 
 // Pure game-state logic. The UI dispatches actions; nothing here touches the DOM.
 // Before the game starts the table has MAX_PLAYERS fixed seats (gaps allowed).
@@ -52,6 +52,8 @@ export const DEFAULT_SETTINGS = {
 //          counts are converted with settings.chipValue when typed).
 // cash: cash paid into the night's pot when settling (leaving or at the end),
 //       [{ id, from, amount }]: the pot is split among winners, only the rest is transferred.
+// adjust: how the manager chose to cover results that don't add up (see
+//         ADJUST_METHODS in settlement.js), or null.
 export const initialState = {
   tableOpen: false,
   settings: DEFAULT_SETTINGS,
@@ -61,6 +63,7 @@ export const initialState = {
   finals: {},
   endMode: 'net',
   cash: [],
+  adjust: null,
 };
 
 const positiveInt = (n) => Number.isInteger(n) && n > 0;
@@ -201,7 +204,8 @@ export function normalizeState(state) {
   const tableOpen = state.tableOpen ?? players.length > 0;
   const settings = cleanSettings(state.settings ?? DEFAULT_SETTINGS);
   const cash = Array.isArray(state.cash) ? state.cash : [];
-  return { ...initialState, ...state, players: merged, started, finals, endMode, tableOpen, settings, cash };
+  const adjust = cleanAdjust(state.adjust);
+  return { ...initialState, ...state, players: merged, started, finals, endMode, tableOpen, settings, cash, adjust };
 }
 
 function withoutKey(obj, key) {
@@ -321,6 +325,9 @@ export function gameReducer(state, action) {
         ...state,
         players: state.players.map((p) => (p.id === action.id ? { ...p, absent: Boolean(action.absent) } : p)),
       };
+    case 'setAdjust':
+      // "הסכומים לא מתאזנים": who covers the difference (settlement screen).
+      return { ...state, adjust: cleanAdjust(action.adjust) };
     case 'startGame':
       return { ...state, started: true, players: compactSeats(state.players) };
     case 'moveSeat': {

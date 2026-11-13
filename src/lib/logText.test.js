@@ -41,6 +41,19 @@ describe('describeLog: exits and table names', () => {
     expect(say('rounding_changed', { old: 10, new: 1 }, 'תומר')).toBe('תומר שינה: בלי עיגול (לשקל)');
   });
 
+  it('describes who covers results that do not add up', () => {
+    expect(say('adjust_changed', { method: 'equal' }, 'תומר')).toBe('תומר בחר: את ההפרש מחלקים שווה בין כל השחקנים');
+    expect(say('adjust_changed', { method: 'winners' }, 'תומר')).toBe('תומר בחר: את ההפרש מחלקים בין המנצחים לפי הרווח');
+    expect(say('adjust_changed', { method: 'player', name: 'אסף' }, 'תומר')).toBe('תומר בחר: אסף מכסה את ההפרש');
+    expect(say('adjust_changed', { method: 'player', name: null }, 'תומר')).toBe('תומר בחר ששחקן מסוים יכסה את ההפרש');
+    expect(say('adjust_changed', { method: null }, 'תומר')).toBe('תומר ביטל את הבחירה מי מכסה את ההפרש');
+    const text = say('results_adjusted', { gap: 50, changes: [{ name: 'אסף', amount: -30 }, { name: 'עידו', amount: -20 }] });
+    expect(text).toContain('תיקון הפרש של');
+    expect(text).toContain('אסף');
+    expect(text).toContain('−30');
+    expect(say('results_adjusted', { gap: 0, changes: [{ name: 'אסף', amount: -10 }] })).toContain('תיקון עיגול');
+  });
+
   it('describes "לא כאן" marks and chip value changes', () => {
     expect(say('presence_changed', { name: 'תומר', absent: true }, 'אסף')).toBe('אסף סימן שתומר לא כאן');
     expect(say('presence_changed', { name: 'תומר', absent: false }, 'אסף')).toBe('אסף סימן שתומר כאן');
