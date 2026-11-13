@@ -43,7 +43,9 @@ export default function App() {
   });
   const auth = useAuth();
   // First sign-in: confirm a display name (and pick a color) before anything else.
-  const needsName = Boolean(auth.session && auth.profile && !auth.profile.name_confirmed_at);
+  // Dev only: ?setup=1 shows the first sign-in again for an account that already did it (to test it).
+  const [previewSetup, setPreviewSetup] = useState(() => import.meta.env.DEV && new URLSearchParams(location.search).has('setup'));
+  const needsName = Boolean(auth.session && auth.profile && (!auth.profile.name_confirmed_at || previewSetup));
   const [confetti, setConfetti] = useState(0);
   const [toast, setToast] = useState(null);
   const [localSettings, setLocalSettings] = useState(false);
@@ -90,7 +92,15 @@ export default function App() {
           behind the clock, so a page scrolled up (e.g. by the keyboard) slides under it
           instead of mixing with the clock and battery. Sheets and toasts sit above it. */}
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[env(safe-area-inset-top)] bg-[#0b1120]" />
-      {needsName && <NameSetup profile={auth.profile} onSaved={auth.setProfile} />}
+      {needsName && (
+        <NameSetup
+          profile={auth.profile}
+          onSaved={(profile) => {
+            setPreviewSetup(false);
+            auth.setProfile(profile);
+          }}
+        />
+      )}
 
       {!needsName && invite && !auth.loading && (
         <JoinScreen

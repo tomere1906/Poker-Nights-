@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { cleanBitLink } from '../lib/bitLink.js';
 import { readQrFromFile } from '../lib/qrImage.js';
+import { BIT_QR_GUIDE } from '../lib/guide.js';
+import Guide from './Guide.jsx';
 
 // "קישור ביט אישי": paste the link, or pick a screenshot of the personal QR
 // code in Bit and the link is read from it right here on the phone (the
@@ -10,6 +12,7 @@ export default function BitLinkField({ value, onChange, disabled = false, label 
   const fileRef = useRef(null);
   const [reading, setReading] = useState(false);
   const [readError, setReadError] = useState(null);
+  const [guide, setGuide] = useState(false);
   const cleaned = cleanBitLink(value);
   const invalid = cleaned === null;
 
@@ -65,9 +68,12 @@ export default function BitLinkField({ value, onChange, disabled = false, label 
       {invalid && !readError && <p className="mt-1 text-xs text-rose-300">רק קישור אישי של ביט: https://www.bitpay.co.il/app/me/…</p>}
       {cleaned && <p className="mt-1 text-xs text-emerald-300">✓ קישור ביט אישי</p>}
       <p className="mt-1 text-xs text-slate-500">
-        איך מוצאים: באפליקציית ביט פותחים את קוד ה־QR האישי שלכם ומצלמים מסך, ואז בוחרים את הצילום כאן. הקישור נקרא מהתמונה בטלפון
-        שלכם, והתמונה לא נשלחת לשום מקום. מי שצריך להעביר לכם כסף יפתח איתו את ביט ישר על העברה אליכם.
+        איך מוצאים: בביט ״עוד״ ← ״קוד ה־QR הקבוע שלי לקבלת כסף״ ← צילום מסך, ואז בוחרים אותו כאן. התמונה לא נשלחת לשום מקום.{' '}
+        <button type="button" onClick={() => setGuide(true)} className="font-bold text-sky-300 underline underline-offset-2">
+          📖 מדריך
+        </button>
       </p>
+      {guide && <Guide guide={BIT_QR_GUIDE} onClose={() => setGuide(false)} />}
     </div>
   );
 }
