@@ -628,7 +628,7 @@ describe('covering a counting mistake ("הסכומים לא מתאזנים")', (
 
   it('a closed table shows the same adjustment from the stored results', () => {
     const { nets, adjustment } = adjustNets(night, 10, { method: 'winners' });
-    expect(storedAdjustment(night, nets, 10)).toEqual({ method: null, gap: 50, changes: adjustment.changes });
+    expect(storedAdjustment(night, nets, 10)).toEqual({ method: null, player: null, gap: 50, changes: adjustment.changes });
     expect(storedAdjustment(entries({ a: 100, b: -100 }), entries({ a: 100, b: -100 }), 10)).toBeNull();
   });
 
@@ -643,16 +643,22 @@ describe('covering a counting mistake ("הסכומים לא מתאזנים")', (
       const { nets, adjustment } = adjustNets(night, unit, adjust);
       expect(sum(nets)).toBe(0);
       for (const e of nets) expect(Math.abs(e.net % unit)).toBe(0);
-      const rounded = night.reduce((s, e) => s + roundTo(e.net, unit), 0);
-      const moved = (adjustment?.changes ?? []).reduce((s, c) => s + c.amount, 0);
-      expect(moved + rounded).toBe(0);
-      for (const c of adjustment?.changes ?? []) expect(Math.abs(c.amount % unit)).toBe(0);
-      if (adjust?.method === 'player' && adjustment) {
-        expect(adjustment.changes.map((c) => c.id)).toEqual([adjust.player]);
-      }
-      if (adjust?.method === 'winners' && adjustment?.method === 'winners') {
-        // Only winners move.
-        for (const c of adjustment.changes) expect(roundTo(night.find((e) => e.id === c.id).net, unit)).toBeGreaterThan(0);
+      if (adjustment) {
+        // The card: every number matches the final results exactly, and together
+        // they move exactly the counting gap.
+        const moved = adjustment.changes.reduce((s, c) => s + c.amount, 0);
+        expect(moved + countingGap(night)).toBe(0);
+        for (const e of nets) {
+          const typed = night.find((x) => x.id === e.id).net;
+          const change = adjustment.changes.find((c) => c.id === e.id);
+          expect(typed + (change?.amount ?? 0)).toBe(e.net);
+          if (change) expect(change.share + change.rounding).toBe(change.amount);
+        }
+        for (const c of adjustment.changes) expect(Math.abs(c.share % unit)).toBe(0);
+        const sharers = adjustment.changes.filter((c) => c.share !== 0).map((c) => c.id);
+        if (adjustment.method === 'player') expect(sharers).toEqual([adjust.player]);
+        // Only winners share.
+        if (adjustment.method === 'winners') for (const id of sharers) expect(roundTo(night.find((e) => e.id === id).net, unit)).toBeGreaterThan(0);
       }
       if (n % 10 === 0) expectBalanced(settle(night, { unit, adjust }));
     }
@@ -671,5 +677,45 @@ describe('adjustReady (the settlement waits for the manager)', () => {
     expect(adjustReady(night, 10, { method: 'player', player: 'zz' })).toBe(false);
     expect(adjustReady(night, 10, { method: 'player', player: 'd' })).toBe(true);
     expect(adjustReady(entries({ a: 0, b: -50 }), 10, { method: 'winners' })).toBe(false);
+  });
+});
+
+describe('the adjustment card shows real changes, rounding included (real night: Yuri +175, Ido −75)', () => {
+  // Off by +5. With rounding 10, Yuri 175 → 180 and Ido −75 → −80 first; Shaked 25 → 30.
+  const night = entries({ yuri: 175, ido: -75, shaked: 25, or: -120 });
+  const byId = (adjustment) => Object.fromEntries(adjustment.changes.map((c) => [c.id, c]));
+  const final = (nets, id) => nets.find((e) => e.id === id).net;
+
+  it('rounding 10: Yuri ends at 170 and the card says −5 (not −10); Ido −5 and Shaked +5 by rounding', () => {
+    const { nets, adjustment } = adjustNets(night, 10, { method: 'winners' });
+    expect(final(nets, 'yuri')).toBe(170);
+    expect(final(nets, 'ido')).toBe(-80);
+    expect(final(nets, 'shaked')).toBe(30);
+    expect(final(nets, 'or')).toBe(-120);
+    const c = byId(adjustment);
+    expect(c.yuri).toEqual({ id: 'yuri', amount: -5, share: -10, rounding: 5 });
+    expect(c.ido).toEqual({ id: 'ido', amount: -5, share: 0, rounding: -5 });
+    expect(c.shaked).toEqual({ id: 'shaked', amount: 5, share: 0, rounding: 5 });
+    expect(c.or).toBeUndefined();
+    // Every number on the card matches the final result.
+    for (const e of night) expect(e.net + (c[e.id]?.amount ?? 0)).toBe(final(nets, e.id));
+    expect(adjustment.gap).toBe(5);
+  });
+
+  it('rounding 5: nothing is rounded, Yuri covers the 5', () => {
+    const { nets, adjustment } = adjustNets(night, 5, { method: 'winners' });
+    expect(final(nets, 'yuri')).toBe(170);
+    expect(adjustment.changes).toEqual([{ id: 'yuri', amount: -5, share: -5, rounding: 0 }]);
+  });
+
+  it('a closed table reads the same card back from the stored results', () => {
+    for (const unit of [10, 5]) {
+      const { nets, adjustment } = adjustNets(night, unit, { method: 'winners' });
+      expect(storedAdjustment(night, nets, unit).changes).toEqual(adjustment.changes);
+    }
+  });
+
+  it('a night that adds up, with rounding only, has no card', () => {
+    expect(storedAdjustment(entries({ a: 175, b: -175 }), entries({ a: 180, b: -180 }), 10)).toBeNull();
   });
 });

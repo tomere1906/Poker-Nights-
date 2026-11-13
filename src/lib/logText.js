@@ -80,8 +80,11 @@ export function describeLog(entry) {
       if (d.method === 'player') return d.name ? `${who} בחר: ${d.name} מכסה את ההפרש` : `${who} בחר ששחקן מסוים יכסה את ההפרש`;
       return `${who} ביטל את הבחירה מי מכסה את ההפרש`;
     case 'results_adjusted': {
-      // Who absorbed how much when the results didn't add up (written when the game ended).
-      const moved = (d.changes ?? []).map((c) => `${c.name ?? 'שחקן'} ${formatShekel(c.amount, { signed: true })}`).join(', ');
+      // Each player's real change when the results didn't add up, rounding included (written when the game ended).
+      // A change made by rounding alone (share 0) says so; old rows have no share.
+      const moved = (d.changes ?? [])
+        .map((c) => `${c.name ?? 'שחקן'} ${formatShekel(c.amount, { signed: true })}${c.share === 0 ? ' (עיגול)' : ''}`)
+        .join(', ');
       return d.gap ? `תיקון הפרש של ${formatShekel(Math.abs(d.gap))}: ${moved}` : `תיקון עיגול: ${moved}`;
     }
     case 'settings_changed': {
