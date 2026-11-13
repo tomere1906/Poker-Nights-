@@ -4,7 +4,7 @@ import { MAX_NAME_LENGTH, loadMyBitDetails, saveMyBitDetails, saveProfile } from
 import { cleanPhone, formatPhone } from '../lib/phone.js';
 import { cleanBitLink } from '../lib/bitLink.js';
 import Avatar from './Avatar.jsx';
-import BitLinkField from './BitLinkField.jsx';
+import BitDetailsFields, { bitDetailsValid } from './BitDetailsFields.jsx';
 import { friendlyError } from '../lib/errors.js';
 
 // Name + color picker for the signed-in user's own profile. withPhone: also the
@@ -43,10 +43,8 @@ export default function ProfileForm({ profile, submitLabel, onSaved, withPhone =
 
   const trimmed = name.trim();
   const cleanedPhone = phone === null ? null : cleanPhone(phone);
-  const phoneValid = phone === null || cleanedPhone !== null;
   const cleanedLink = bitLink === null ? null : cleanBitLink(bitLink);
-  const linkValid = bitLink === null || cleanedLink !== null;
-  const valid = trimmed.length >= 1 && trimmed.length <= MAX_NAME_LENGTH && phoneValid && linkValid;
+  const valid = trimmed.length >= 1 && trimmed.length <= MAX_NAME_LENGTH && bitDetailsValid(phone, bitLink);
 
   async function submit(e) {
     e.preventDefault();
@@ -106,33 +104,7 @@ export default function ProfileForm({ profile, submitLabel, onSaved, withPhone =
         </div>
       </fieldset>
 
-      {withPhone && (
-        <label className="block">
-          <span className="mb-2 block text-sm text-slate-400">מספר טלפון (לביט) · לא חובה</span>
-          <input
-            value={phone ?? ''}
-            onChange={(e) => setPhone(e.target.value)}
-            disabled={phone === null}
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            dir="ltr"
-            placeholder="050-123-4567"
-            className={`w-full rounded-2xl bg-slate-800 px-4 py-3 text-end text-lg outline-none ring-2 placeholder:text-slate-500 focus:ring-emerald-400 ${
-              phoneValid ? 'ring-transparent' : 'ring-rose-400'
-            }`}
-          />
-          <span className={`mt-1 block text-xs ${phoneValid ? 'text-slate-500' : 'text-rose-300'}`}>
-            {phoneValid
-              ? 'רק מי שצריך להעביר לך כסף במשחק שנסגר יראה אותו, כדי להעביר בביט. לא מופיע בתמונה, ביומן או בהזמנה. למחיקה: מחקו את המספר ושמרו.'
-              : 'מספר נייד ישראלי, למשל 050-123-4567'}
-          </span>
-        </label>
-      )}
-
-      {withPhone && (
-        <BitLinkField value={bitLink ?? ''} onChange={setBitLink} disabled={bitLink === null} />
-      )}
+      {withPhone && <BitDetailsFields phone={phone} onPhone={setPhone} bitLink={bitLink} onBitLink={setBitLink} />}
 
       {error && (
         <p className="rounded-xl bg-rose-500/15 px-3 py-2 text-sm text-rose-200 ring-1 ring-rose-400/30">
