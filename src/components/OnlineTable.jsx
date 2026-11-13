@@ -165,8 +165,9 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
     if (!stored) return null;
     // The manager's choice names how it was split, if it matches what was stored.
     const { method, player } = view.adjust ?? {};
-    const fits = method && (method !== 'player' || (stored.changes.length === 1 && stored.changes[0].id === player));
-    return { ...stored, method: fits ? method : null };
+    const sharers = stored.changes.filter((c) => c.share !== 0);
+    const fits = method && (method !== 'player' || (sharers.length === 1 && sharers[0].id === player));
+    return { ...stored, method: fits ? method : null, player: fits && method === 'player' ? player : null };
   }, [view, entries]);
 
   // "לא כאן": cash is handed only to winners who are present.

@@ -76,15 +76,17 @@ export function AdjustChoice({ gap, adjust, players, canWinners, onChange }) {
   );
 }
 
-// What the adjustment did: whose result moved and by how much.
-// adjustment: { method, gap, changes: [{ id, amount }] } (see adjustNets).
+// What the adjustment did: each player's real change from the result as typed
+// to the final result, rounding included, so every number matches the results.
+// adjustment: { method, player, gap, changes: [{ id, amount, share, rounding }] }
+// (see adjustNets). A change made by rounding alone says "(עיגול)".
 export function AdjustmentNote({ adjustment, nameOf }) {
-  const { method, gap, changes } = adjustment;
+  const { method, player, gap, changes } = adjustment;
   let title;
   if (gap === 0) title = 'עיגול הסכומים השאיר הפרש קטן, והוא נלקח מהמנצח הגדול';
   else if (method === 'equal') title = `${gapText(gap)}. ההפרש חולק שווה בין כל השחקנים`;
   else if (method === 'winners') title = `${gapText(gap)}. ההפרש חולק בין המנצחים לפי הרווח`;
-  else if (method === 'player') title = `${gapText(gap)}. ${nameOf(changes[0].id)} כיסה את ההפרש`;
+  else if (method === 'player') title = `${gapText(gap)}. ${nameOf(player)} כיסה את ההפרש`;
   else if (method === 'biggest') title = `${gapText(gap)}. ההפרש נלקח מהמנצח הגדול`;
   else title = `${gapText(gap)}. התוצאות תוקנו כדי שיתאזנו`;
   return (
@@ -96,6 +98,7 @@ export function AdjustmentNote({ adjustment, nameOf }) {
           <span key={c.id} className="flex max-w-full items-center gap-1.5 rounded-2xl bg-slate-950/40 px-3 py-1.5 text-sm font-bold text-slate-200">
             <PlayerName name={nameOf(c.id)} />
             <span className="shrink-0 text-amber-200">{formatShekel(c.amount, { signed: true })}</span>
+            {c.share === 0 && <span className="shrink-0 text-xs font-medium text-slate-400">(עיגול)</span>}
           </span>
         ))}
       </div>

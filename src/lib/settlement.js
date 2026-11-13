@@ -72,9 +72,9 @@ function splitUnits(count, weights, nets) {
 // it; without one (or when it can't apply: no winners, the player isn't at the
 // table) the biggest winner takes it, as for a leftover of rounding alone.
 // Every share is a multiple of unit, so all results stay round.
-// Returns { nets, adjustment }: adjustment = { method, gap, changes: [{ id, amount }] }
-// (amount: how much that player's result moved; only players whose result
-// moved), or null when nothing had to be covered.
+// Returns { nets, adjustment }: adjustment = { method, player, gap, changes }
+// (see resultChanges: each player's real change, rounding included), or null
+// when nothing had to be covered.
 export function adjustNets(entries, unit = 1, adjust = null) {
   const nets = entries.map((e) => ({ id: e.id, net: roundTo(e.net, unit) }));
   const diff = nets.reduce((sum, e) => sum + e.net, 0);
@@ -98,14 +98,27 @@ export function adjustNets(entries, unit = 1, adjust = null) {
   }
 
   const units = splitUnits(Math.abs(diff) / unit, weights, values);
-  const changes = [];
   nets.forEach((e, i) => {
-    const amount = -Math.sign(diff) * units[i] * unit;
-    if (amount === 0) return;
-    e.net += amount;
-    changes.push({ id: e.id, amount });
+    e.net += -Math.sign(diff) * units[i] * unit;
   });
-  return { nets, adjustment: { method, gap: countingGap(entries), changes } };
+  const player = method === 'player' ? adjust.player : null;
+  return { nets, adjustment: { method, player, gap: countingGap(entries), changes: resultChanges(entries, nets, unit) } };
+}
+
+// Each player's real change from the result as typed to the final result:
+// [{ id, amount, share, rounding }], amount = share + rounding, only players
+// whose result moved. share: their part of the difference (a multiple of
+// unit); rounding: what rounding to the unit moved (e.g. −75 → −80 = −5), so
+// the amounts add up to exactly minus the counting gap.
+export function resultChanges(entries, finals, unit = 1) {
+  const final = new Map(finals.map((f) => [f.id, f.net]));
+  return entries
+    .map((e) => {
+      const rounded = roundTo(e.net, unit);
+      const end = final.get(e.id) ?? rounded;
+      return { id: e.id, amount: end - e.net, share: end - rounded, rounding: rounded - e.net };
+    })
+    .filter((c) => c.amount !== 0);
 }
 
 // Round every net to a multiple of unit and balance them (see adjustNets).
@@ -113,14 +126,12 @@ export function roundNets(entries, unit = 1, adjust = null) {
   return adjustNets(entries, unit, adjust).nets;
 }
 
-// A closed table: how each stored result differs from the results as typed
-// (rounded), i.e. what the adjustment was. finals: [{ id, net }] as stored.
+// A closed table: the adjustment, read back from the stored results.
+// finals: [{ id, net }] as stored. Null when nobody covered a difference
+// (rounding alone moved results).
 export function storedAdjustment(entries, finals, unit = 1) {
-  const typed = new Map(entries.map((e) => [e.id, roundTo(e.net, unit)]));
-  const changes = finals
-    .map((f) => ({ id: f.id, amount: f.net - (typed.get(f.id) ?? 0) }))
-    .filter((c) => c.amount !== 0);
-  return changes.length ? { method: null, gap: countingGap(entries), changes } : null;
+  const changes = resultChanges(entries, finals, unit);
+  return changes.some((c) => c.share !== 0) ? { method: null, player: null, gap: countingGap(entries), changes } : null;
 }
 
 // The searches below work in rounding units: `min` is MIN_TRANSFER in units.

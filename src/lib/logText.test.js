@@ -52,6 +52,12 @@ describe('describeLog: exits and table names', () => {
     expect(text).toContain('אסף');
     expect(text).toContain('−30');
     expect(say('results_adjusted', { gap: 0, changes: [{ name: 'אסף', amount: -10 }] })).toContain('תיקון עיגול');
+    // Real changes: a change made by rounding alone is marked.
+    const real = say('results_adjusted', {
+      gap: 5,
+      changes: [{ name: 'יורי', amount: -5, share: -10 }, { name: 'עידו', amount: -5, share: 0 }],
+    });
+    expect(real.endsWith('יורי −5 ₪, עידו −5 ₪ (עיגול)')).toBe(true);
   });
 
   it('describes "לא כאן" marks and chip value changes', () => {
