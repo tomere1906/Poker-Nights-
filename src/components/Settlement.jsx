@@ -77,8 +77,9 @@ function RowAmount({ row }) {
 // manager's seat, who takes cash that no present winner is owed and passes it on.
 // The line under a stored row (closed online table): its status ("פתוח" /
 // "שולם ✓", a toggle for the payer, the receiver and managers) and, for the
-// payer only, "העתק טלפון לביט" when the receiver saved a number.
-function RowFooter({ row, canMark, onTogglePaid, phone, onBit }) {
+// payer only, "שלם בביט · 150 ₪" when the receiver saved a personal Bit link,
+// else "העתק טלפון לביט" when they saved a number.
+function RowFooter({ row, canMark, onTogglePaid, pay, onBit }) {
   const [busy, setBusy] = useState(false);
   const paid = Boolean(row.paidAt);
   const status = paid ? 'שולם ✓' : 'פתוח';
@@ -106,13 +107,13 @@ function RowFooter({ row, canMark, onTogglePaid, phone, onBit }) {
       ) : (
         <span className={`rounded-xl px-3 py-2 text-sm font-bold ${statusClass}`}>{status}</span>
       )}
-      {phone && (
+      {pay && (
         <button
           type="button"
-          onClick={() => onBit(row, phone)}
+          onClick={() => onBit(row, pay)}
           className="ms-auto rounded-xl bg-sky-400/15 px-3 py-2 text-sm font-bold text-sky-200 transition active:scale-95"
         >
-          העתק טלפון לביט 📋
+          {pay.bitLink ? `שלם בביט · ${formatShekel(row.amount - row.cash)}` : 'העתק טלפון לביט 📋'}
         </button>
       )}
     </div>
@@ -121,8 +122,8 @@ function RowFooter({ row, canMark, onTogglePaid, phone, onBit }) {
 
 // stored: the transfers saved when an online table was closed (with paidAt);
 // shown instead of recomputing, with "N מתוך M שולמו" on top. canMark(row) /
-// onTogglePaid(row, paid): "שולם ✓". phoneFor(row): the receiver's number for
-// the viewer (only the payer gets one), onBit(row, phone): copy it and open Bit.
+// onTogglePaid(row, paid): "שולם ✓". payFor(row): the receiver's { phone,
+// bitLink } for the viewer (only the payer gets them), onBit(row, pay): pay in Bit.
 // showPodium: the night's top 3 winners on top (once the table is closed;
 // also in the shared image). children: extra buttons under "share".
 // "הסכומים לא מתאזנים": before closing, adjust is the manager's choice of who
@@ -144,7 +145,7 @@ export default function Settlement({
   stored = NONE,
   canMark = null,
   onTogglePaid = null,
-  phoneFor = null,
+  payFor = null,
   onBit = null,
   showPodium = false,
   adjust = null,
@@ -308,7 +309,7 @@ export default function Settlement({
                   row={t}
                   canMark={Boolean(onTogglePaid && canMark?.(t))}
                   onTogglePaid={onTogglePaid}
-                  phone={phoneFor?.(t) ?? null}
+                  pay={payFor?.(t) ?? null}
                   onBit={onBit}
                 />
               )}

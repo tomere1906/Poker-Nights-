@@ -17,6 +17,7 @@
 --         T10 (600+): imported game history: only the owner reads, adds and deletes
 --         T11 (630+): the manager chooses who covers results that don't add up; logged, locked once ended
 --         T12 (670+): the adjustment log shows each player's real change, rounding included
+--         T13 (700+): personal Bit links: same private table and privacy rules as the phone for Bit
 -- Each case runs as a real Data API role (authenticated/anon) with that user's JWT.
 -- 'postgres' cases simulate the system itself (e.g. Supabase Auth updating auth.users).
 --
@@ -653,6 +654,35 @@ begin
       (682, '…Yuri left with 370 (adds up now)',                            'M', $$update public.table_players set final_value = 370 where id = 'ac000000-0000-4000-8000-000000000001'$$, 'rows:1'),
       (683, '…closed again with rounding only (no share)',                  'M', $$select public.end_game('acacacac-acac-4cac-8cac-acacacacacac', '{"ac000000-0000-4000-8000-000000000001": 170, "ac000000-0000-4000-8000-000000000002": -80, "ac000000-0000-4000-8000-000000000003": 30, "ac000000-0000-4000-8000-000000000004": -120}', '[{"from": "ac000000-0000-4000-8000-000000000004", "to": "ac000000-0000-4000-8000-000000000001", "amount": 90}, {"from": "ac000000-0000-4000-8000-000000000004", "to": "ac000000-0000-4000-8000-000000000003", "amount": 30}, {"from": "ac000000-0000-4000-8000-000000000002", "to": "ac000000-0000-4000-8000-000000000001", "amount": 80}]')$$, 'ok'),
       (684, 'Rounding alone logs no adjustment (still only the first)',     'M', $$select count(*) from public.table_log where table_id = 'acacacac-acac-4cac-8cac-acacacacacac' and action = 'results_adjusted'$$, 'count:1'),
+
+      -- ---------------- T13 (700+): personal Bit links: same private table and rules as the phone ----------------
+      -- Q has a phone row (T6), M has one too. S has none. In T13 P owes S 50 by transfer.
+      (700, 'Q adds a Bit link next to his phone',                          'Q', $$update public.profile_phones set bit_link = 'https://www.bitpay.co.il/app/me/AbC123-xyz_9' where user_id = '44444444-4444-4444-8444-444444444444'$$, 'rows:1'),
+      (701, 'A link of another site is refused',                            'Q', $$update public.profile_phones set bit_link = 'https://evil.example/app/me/AbC' where user_id = '44444444-4444-4444-8444-444444444444'$$, 'error:23514'),
+      (702, 'A look-alike domain is refused',                               'Q', $$update public.profile_phones set bit_link = 'https://www.bitpay.co.il.evil.example/app/me/AbC' where user_id = '44444444-4444-4444-8444-444444444444'$$, 'error:23514'),
+      (703, 'Plain http is refused',                                        'Q', $$update public.profile_phones set bit_link = 'http://www.bitpay.co.il/app/me/AbC' where user_id = '44444444-4444-4444-8444-444444444444'$$, 'error:23514'),
+      (704, 'Another Bit page is refused',                                  'Q', $$update public.profile_phones set bit_link = 'https://www.bitpay.co.il/app/pay/AbC' where user_id = '44444444-4444-4444-8444-444444444444'$$, 'error:23514'),
+      (705, 'Extra parts (query, script) are refused',                      'Q', $$update public.profile_phones set bit_link = 'https://www.bitpay.co.il/app/me/AbC123-xyz_9?x=<script>' where user_id = '44444444-4444-4444-8444-444444444444'$$, 'error:23514'),
+      (706, 'S saves only a Bit link (no phone)',                           'S', $$insert into public.profile_phones (bit_link) values ('https://www.bitpay.co.il/app/me/S-ID')$$, 'ok'),
+      (707, 'A row with neither is refused',                                'S', $$update public.profile_phones set bit_link = null where user_id = '33333333-3333-4333-8333-333333333333'$$, 'error:23514'),
+      (708, 'S can''t save a link for someone else',                        'S', $$insert into public.profile_phones (user_id, bit_link) values ('22222222-2222-4222-8222-222222222222', 'https://www.bitpay.co.il/app/me/AbC123-xyz_9')$$, 'deny'),
+      (709, 'P can''t change Q''s link',                                    'P', $$update public.profile_phones set bit_link = 'https://www.bitpay.co.il/app/me/AbC123-xyz_9' where user_id = '44444444-4444-4444-8444-444444444444'$$, 'rows:0'),
+      (710, 'Before any game, P can''t see S''s link',                      'P', $$select count(*) from public.profile_phones where user_id = '33333333-3333-4333-8333-333333333333'$$, 'count:0'),
+      (711, 'M opens T13',                                                  'M', $$insert into public.poker_tables (id, invite_code) values ('adadadad-adad-4dad-8dad-adadadadadad', 'code-t13')$$, 'ok'),
+      (712, 'P joins T13',                                                  'P', $$insert into public.table_members (table_id, invite_code) values ('adadadad-adad-4dad-8dad-adadadadadad', 'code-t13')$$, 'ok'),
+      (713, 'S joins T13',                                                  'S', $$insert into public.table_members (table_id, invite_code) values ('adadadad-adad-4dad-8dad-adadadadadad', 'code-t13')$$, 'ok'),
+      (714, 'M seats P, S and himself',                                     'M', $$insert into public.table_players (id, table_id, user_id, seat) values ('ad000000-0000-4000-8000-000000000001', 'adadadad-adad-4dad-8dad-adadadadadad', '22222222-2222-4222-8222-222222222222', 0), ('ad000000-0000-4000-8000-000000000002', 'adadadad-adad-4dad-8dad-adadadadadad', '33333333-3333-4333-8333-333333333333', 1), ('ad000000-0000-4000-8000-000000000003', 'adadadad-adad-4dad-8dad-adadadadadad', '11111111-1111-4111-8111-111111111111', 2)$$, 'ok'),
+      (715, 'M closes T13: P → S 50 by transfer',                           'M', $$select public.end_game('adadadad-adad-4dad-8dad-adadadadadad', '{"ad000000-0000-4000-8000-000000000001": -50, "ad000000-0000-4000-8000-000000000002": 50, "ad000000-0000-4000-8000-000000000003": 0}', '[{"from": "ad000000-0000-4000-8000-000000000001", "to": "ad000000-0000-4000-8000-000000000002", "amount": 50}]')$$, 'ok'),
+      (716, 'P owes S by transfer: P sees S''s link',                       'P', $$select count(*) from public.profile_phones where user_id = '33333333-3333-4333-8333-333333333333' and bit_link = 'https://www.bitpay.co.il/app/me/S-ID'$$, 'count:1'),
+      (717, 'The manager doesn''t see it',                                  'M', $$select count(*) from public.profile_phones where user_id = '33333333-3333-4333-8333-333333333333'$$, 'count:0'),
+      (718, 'Q (not at T13) doesn''t see it',                               'Q', $$select count(*) from public.profile_phones where user_id = '33333333-3333-4333-8333-333333333333'$$, 'count:0'),
+      (719, 'The receiver doesn''t see the payer''s details',               'S', $$select count(*) from public.profile_phones where user_id <> '33333333-3333-4333-8333-333333333333'$$, 'count:0'),
+      (720, 'anon can''t read links',                                       'anon', $$select count(*) from public.profile_phones$$, 'deny'),
+      (721, 'P marks it paid',                                              'P', $$update public.settlement_transfers set paid_at = now() where table_id = 'adadadad-adad-4dad-8dad-adadadadadad'$$, 'rows:1'),
+      (722, '…paid: P no longer sees S''s link',                            'P', $$select count(*) from public.profile_phones where user_id = '33333333-3333-4333-8333-333333333333'$$, 'count:0'),
+      (723, 'Links never reach the change log',                             'postgres', $$select count(*) from public.table_log where details::text ilike '%bitpay%'$$, 'count:0'),
+      (724, 'Only the owner writes the link (column grants)',               'M', $$select count(*) from (values (1)) v(x) where not has_column_privilege('authenticated', 'public.profile_phones', 'bit_link', 'UPDATE') or has_table_privilege('anon', 'public.profile_phones', 'SELECT')$$, 'count:0'),
+      (725, 'S removes his link (the whole row)',                           'S', $$delete from public.profile_phones where user_id = '33333333-3333-4333-8333-333333333333'$$, 'rows:1'),
 
       -- ---------------- every table has RLS on ----------------
       (90, 'RLS is enabled on all 12 tables',          'M', $$select count(*) from pg_tables where schemaname = 'public' and tablename in ('profiles','poker_tables','table_members','table_players','buy_ins','table_log','hidden_games','cash_payments','settlement_transfers','profile_phones','managed_list_hidden','imported_games') and rowsecurity$$, 'count:12'),
