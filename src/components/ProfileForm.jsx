@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { PALETTE, suggestedColor } from '../lib/colors.js';
-import { MAX_NAME_LENGTH, loadMyPhone, saveMyPhone, saveProfile } from '../lib/auth.js';
+import { MAX_NAME_LENGTH, loadMyBitDetails, saveMyBitDetails, saveProfile } from '../lib/auth.js';
 import { cleanPhone, formatPhone } from '../lib/phone.js';
+import { cleanBitLink } from '../lib/bitLink.js';
 import Avatar from './Avatar.jsx';
+import BitLinkField from './BitLinkField.jsx';
 import { friendlyError } from '../lib/errors.js';
 
 // Name + color picker for the signed-in user's own profile. withPhone: also the
-// optional phone number for Bit (the profile screen, not the first sign-in).
+// optional phone number and personal link for Bit (the profile screen, not the
+// first sign-in).
 export default function ProfileForm({ profile, submitLabel, onSaved, withPhone = false }) {
   // Until the name is confirmed, suggest just the first name (profiles created
   // before the first-name rule may still hold the full Google name).
@@ -18,17 +21,19 @@ export default function ProfileForm({ profile, submitLabel, onSaved, withPhone =
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  // null = still loading (or couldn't load): the field waits, and saving leaves the number alone.
+  // null = still loading (or couldn't load): the fields wait, and saving leaves them alone.
   const [phone, setPhone] = useState(null);
-  const [savedPhone, setSavedPhone] = useState(null);
+  const [bitLink, setBitLink] = useState(null);
+  const [saved, setSaved] = useState(null);
   useEffect(() => {
     if (!withPhone) return undefined;
     let active = true;
-    loadMyPhone(profile.id)
-      .then((p) => {
+    loadMyBitDetails(profile.id)
+      .then((d) => {
         if (!active) return;
-        setPhone(formatPhone(p));
-        setSavedPhone(p);
+        setPhone(formatPhone(d.phone));
+        setBitLink(d.bitLink);
+        setSaved(d);
       })
       .catch(() => active && setPhone(null));
     return () => {
@@ -39,7 +44,9 @@ export default function ProfileForm({ profile, submitLabel, onSaved, withPhone =
   const trimmed = name.trim();
   const cleanedPhone = phone === null ? null : cleanPhone(phone);
   const phoneValid = phone === null || cleanedPhone !== null;
-  const valid = trimmed.length >= 1 && trimmed.length <= MAX_NAME_LENGTH && phoneValid;
+  const cleanedLink = bitLink === null ? null : cleanBitLink(bitLink);
+  const linkValid = bitLink === null || cleanedLink !== null;
+  const valid = trimmed.length >= 1 && trimmed.length <= MAX_NAME_LENGTH && phoneValid && linkValid;
 
   async function submit(e) {
     e.preventDefault();
@@ -47,9 +54,10 @@ export default function ProfileForm({ profile, submitLabel, onSaved, withPhone =
     setBusy(true);
     setError(null);
     try {
-      if (withPhone && phone !== null && cleanedPhone !== savedPhone) {
-        await saveMyPhone(profile.id, cleanedPhone);
-        setSavedPhone(cleanedPhone);
+      if (withPhone && saved && (cleanedPhone !== saved.phone || cleanedLink !== saved.bitLink)) {
+        const next = { phone: cleanedPhone, bitLink: cleanedLink };
+        await saveMyBitDetails(profile.id, next);
+        setSaved(next);
       }
       onSaved(await saveProfile(profile.id, { displayName: trimmed, color }));
     } catch (err) {
@@ -120,6 +128,10 @@ export default function ProfileForm({ profile, submitLabel, onSaved, withPhone =
               : 'מספר נייד ישראלי, למשל 050-123-4567'}
           </span>
         </label>
+      )}
+
+      {withPhone && (
+        <BitLinkField value={bitLink ?? ''} onChange={setBitLink} disabled={bitLink === null} />
       )}
 
       {error && (

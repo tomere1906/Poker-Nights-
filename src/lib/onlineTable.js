@@ -159,7 +159,7 @@ async function loadTable(tableId) {
       .eq('table_id', tableId)
       .order('position'),
     // RLS returns only my own number and the numbers of people I have to transfer money to.
-    supabase.from('profile_phones').select('user_id, phone'),
+    supabase.from('profile_phones').select('user_id, phone, bit_link'),
   ]);
   return {
     table: must(table),
@@ -284,7 +284,9 @@ export function toView(raw, userId) {
       paidAt: t.paid_at ? Date.parse(t.paid_at) : null,
     })),
     // { userId: '05…' }: my own number and those of people I have to transfer money to.
-    phones: Object.fromEntries((raw.phones ?? []).map((p) => [p.user_id, p.phone])),
+    phones: Object.fromEntries((raw.phones ?? []).filter((p) => p.phone).map((p) => [p.user_id, p.phone])),
+    // { userId: 'https://www.bitpay.co.il/app/me/…' }: personal Bit links, same privacy as the phones.
+    bitLinks: Object.fromEntries((raw.phones ?? []).filter((p) => p.bit_link).map((p) => [p.user_id, p.bit_link])),
     log: raw.log,
   };
 }

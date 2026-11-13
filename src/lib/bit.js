@@ -29,6 +29,14 @@ export function phonePlatform(userAgent = navigator.userAgent, touchPoints = nav
   return 'other';
 }
 
+// "שלם בביט": opens a personal Bit link (https://www.bitpay.co.il/app/me/<ID>),
+// which opens Bit straight on "transfer to <name>" (a universal link on iPhone,
+// an app link on Android). On a computer it opens Bit's page in a new tab.
+export function openBitLink(link, platform = phonePlatform()) {
+  if (platform === 'other') window.open(link, '_blank', 'noopener');
+  else window.location.href = link;
+}
+
 // Opens Bit; returns false where there is no Bit app to open (a computer).
 export function openBit(platform = phonePlatform()) {
   if (platform === 'android') {

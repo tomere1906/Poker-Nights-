@@ -84,26 +84,28 @@ export async function saveProfile(userId, { displayName, color }) {
   return data;
 }
 
-// The user's own phone for Bit ('' when none). Its own table, not profiles:
-// RLS shows it only to its owner and to people who have to transfer money to them.
-export async function loadMyPhone(userId) {
-  const { data, error } = await supabase.from('profile_phones').select('phone').eq('user_id', userId).maybeSingle();
+// The user's own details for Bit: { phone: '05XXXXXXXX' | '', bitLink: 'https://www.bitpay.co.il/app/me/…' | '' }.
+// Their own table, not profiles: RLS shows them only to their owner and to
+// people who have to transfer money to them.
+export async function loadMyBitDetails(userId) {
+  const { data, error } = await supabase.from('profile_phones').select('phone, bit_link').eq('user_id', userId).maybeSingle();
   if (error) throw error;
-  return data?.phone ?? '';
+  return { phone: data?.phone ?? '', bitLink: data?.bit_link ?? '' };
 }
 
-// phone: '05XXXXXXXX', or '' to delete it.
-export async function saveMyPhone(userId, phone) {
-  if (!phone) {
+// Saves both ('' = none); with neither, the row is deleted.
+export async function saveMyBitDetails(userId, { phone, bitLink }) {
+  const row = { phone: phone || null, bit_link: bitLink || null };
+  if (!row.phone && !row.bit_link) {
     const { error } = await supabase.from('profile_phones').delete().eq('user_id', userId);
     if (error) throw error;
     return;
   }
-  // No upsert: users may update only the phone column, not user_id.
-  const { data, error } = await supabase.from('profile_phones').update({ phone }).eq('user_id', userId).select('user_id');
+  // No upsert: users may update only these columns, not user_id.
+  const { data, error } = await supabase.from('profile_phones').update(row).eq('user_id', userId).select('user_id');
   if (error) throw error;
   if (data.length === 0) {
-    const inserted = await supabase.from('profile_phones').insert({ user_id: userId, phone });
+    const inserted = await supabase.from('profile_phones').insert({ user_id: userId, ...row });
     if (inserted.error) throw inserted.error;
   }
 }

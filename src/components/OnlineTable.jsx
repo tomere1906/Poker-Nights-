@@ -8,11 +8,11 @@ import TableManageSheet from './TableManageSheet.jsx';
 import OnlineEndGame from './OnlineEndGame.jsx';
 import Settlement from './Settlement.jsx';
 import { adjustReady, settle, storedAdjustment } from '../lib/settlement.js';
-import { openBit } from '../lib/bit.js';
+import { openBit, openBitLink } from '../lib/bit.js';
 import { copyText } from '../lib/clipboard.js';
 import { formatShekel } from '../lib/format.js';
 import { formatPhone } from '../lib/phone.js';
-import { saveMyPhone } from '../lib/auth.js';
+import { saveMyBitDetails } from '../lib/auth.js';
 import PhonePrompt from './PhonePrompt.jsx';
 import { CardsIcon } from './Icons.jsx';
 import { friendlyError } from '../lib/errors.js';
@@ -113,7 +113,14 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
     const seat = new Map(view.players.map((p) => [p.id, p]));
     return view.transfers.some((t) => {
       const to = seat.get(t.to);
-      return !t.paidAt && t.amount > t.cash && seat.get(t.from)?.userId === userId && to?.userId && !view.phones[to.userId];
+      return (
+        !t.paidAt &&
+        t.amount > t.cash &&
+        seat.get(t.from)?.userId === userId &&
+        to?.userId &&
+        !view.phones[to.userId] &&
+        !view.bitLinks[to.userId]
+      );
     });
   }, [view, userId]);
   useEffect(() => {
@@ -245,6 +252,7 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
     view.settling &&
     !phoneLater &&
     !view.phones[userId] &&
+    !view.bitLinks[userId] &&
     view.transfers.some((t) => !t.paidAt && t.amount > t.cash && mine(seatOf(t.to)));
   const paidCount = view.transfers.filter((t) => t.paidAt).length;
   const allPaid = view.transfers.length > 0 && paidCount === view.transfers.length;
@@ -277,10 +285,10 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
             )}
             {askPhone && (
               <PhonePrompt
-                onSave={async (phone) => {
-                  await saveMyPhone(userId, phone);
+                onSave={async (details) => {
+                  await saveMyBitDetails(userId, details);
                   await refresh();
-                  showToast('המספר נשמר ✓ מי שמעביר לך יראה את כפתור הביט');
+                  showToast('נשמר ✓ מי שמעביר לך יראה את כפתור הביט');
                 }}
                 onLater={() => {
                   try {
@@ -297,15 +305,25 @@ export default function OnlineTable({ tableId, userId, onHome, showToast, onCele
         stored={view.transfers}
         canMark={(row) => view.canManage || mine(seatOf(row.from)) || mine(seatOf(row.to))}
         onTogglePaid={(row, paid) => actions.setPaid(row.id, paid).catch(fail)}
-        phoneFor={(row) =>
-          view.settling && !row.paidAt && row.amount > row.cash && mine(seatOf(row.from))
-            ? view.phones[seatOf(row.to)?.userId] ?? null
-            : null
-        }
-        onBit={(row, phone) => {
+        payFor={(row) => {
+          if (!view.settling || row.paidAt || row.amount <= row.cash || !mine(seatOf(row.from))) return null;
+          const to = seatOf(row.to)?.userId;
+          const pay = { phone: view.phones[to] ?? null, bitLink: view.bitLinks[to] ?? null };
+          return pay.phone || pay.bitLink ? pay : null;
+        }}
+        onBit={(row, pay) => {
+          const amount = row.amount - row.cash;
           // Copy first (still inside the tap), then open Bit.
-          copyText(phone).then((ok) =>
-            showToast(ok ? `המספר הועתק · ${formatShekel(row.amount - row.cash)} – הדבק בביט` : `לא הצלחנו להעתיק: ${formatPhone(phone)}`)
+          if (pay.bitLink) {
+            // The link opens Bit on "transfer to <name>": paste the amount there.
+            copyText(String(amount)).then((ok) =>
+              showToast(ok ? `הסכום הועתק · ${formatShekel(amount)} – הדבק בביט` : `הסכום להעברה: ${formatShekel(amount)}`)
+            );
+            openBitLink(pay.bitLink);
+            return;
+          }
+          copyText(pay.phone).then((ok) =>
+            showToast(ok ? `המספר הועתק · ${formatShekel(amount)} – הדבק בביט` : `לא הצלחנו להעתיק: ${formatPhone(pay.phone)}`)
           );
           openBit();
         }}

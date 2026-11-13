@@ -58,8 +58,8 @@ Poker Nights keeps track of the money during the night and does the math at the 
 
 - **Open until everyone has paid.** Closing the table ends the game (results are saved and counted in stats right away), but it stays "open for settling" on everyone's start screen ("2 of 5 paid") until the last transfer is marked paid. The manager can also close it by hand.
 - **"Paid ✓", live.** The payer, the receiver or a manager marks each transfer as paid; everyone sees it at once.
-- **The Bit button.** One tap copies the receiver's phone number, shows the amount, and opens Bit. The number is visible only to people who still owe that person money, and only while the settling is open, enforced in the database.
-- **Asked only when needed.** A winner who has no phone number saved is asked for it on the settlement screen, not at sign-up. Once it's saved, the Bit button appears for the payers by itself.
+- **The Bit button.** If the receiver added their personal Bit link (pasted, or read from a screenshot of their Bit QR code, right on the phone), "שלם בביט · 150 ₪" copies the amount and opens Bit straight on a transfer to them. Otherwise one tap copies their phone number, shows the amount, and opens Bit. The number and link are visible only to people who still owe that person money, and only while the settling is open, enforced in the database.
+- **Asked only when needed.** A winner who has neither a Bit link nor a phone number saved is asked for one on the settlement screen, not at sign-up. Once it's saved, the Bit button appears for the payers by itself.
 
 ### Stats
 
@@ -88,7 +88,7 @@ The algorithm is a pure function in [`src/lib/settlement.js`](src/lib/settlement
 
 The app talks to the database directly from the browser with a *public* key, so the app itself can't be the wall. Every rule is enforced **inside the database** (PostgreSQL row-level security, triggers and column-level grants): who can see a table, who can add a buy-in, who can close the game, that results add up to zero, and that an ended game is locked.
 
-- **521 database security tests** ([`supabase/tests/rls_test.sql`](supabase/tests/rls_test.sql)) try to break every rule as manager, co-manager, player, stranger and signed-out visitor.
+- **547 database security tests** ([`supabase/tests/rls_test.sql`](supabase/tests/rls_test.sql)) try to break every rule as manager, co-manager, player, stranger and signed-out visitor.
 - **58 outside attack checks** ([`supabase/tests/attack_test.mjs`](supabase/tests/attack_test.mjs)) hit the real database directly, bypassing the app, with only the public key: without an account, and with two real accounts trying to read, change, take over or listen in on each other's tables. All blocked.
 - Emails are never shown to other users; stats are visible only to their owner; names are cleaned of hidden direction-control characters; sign-in is Google only.
 - No secrets in the code or its git history; dependencies audited.
@@ -118,7 +118,7 @@ npm run build                # production build
 
 Without a Supabase project the app still runs, in local mode only.
 
-To set up your own database: run the files in [`supabase/migrations/`](supabase/migrations/) in order in the Supabase SQL editor, then [`supabase/tests/rls_test.sql`](supabase/tests/rls_test.sql). It should end with "ALL 521 TESTS PASSED". Enable Google as the only sign-in provider.
+To set up your own database: run the files in [`supabase/migrations/`](supabase/migrations/) in order in the Supabase SQL editor, then [`supabase/tests/rls_test.sql`](supabase/tests/rls_test.sql). It should end with "ALL 547 TESTS PASSED". Enable Google as the only sign-in provider.
 
 ## Roadmap
 
